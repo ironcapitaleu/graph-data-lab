@@ -1,0 +1,5 @@
+[
+  {"company_id": "CIK:0000000003", "ultimate_parent_id": "LEI:5493001ALPHAHOLD0020"},
+  {"company_id": "LEI:5493002BETACORP00097", "ultimate_parent_id": "LEI:5493001ALPHAHOLD0020"},
+  {"company_id": "LEI:5493004DELTAGMBH0018", "ultimate_parent_id": "LEI:5493001ALPHAHOLD0020"}
+]
