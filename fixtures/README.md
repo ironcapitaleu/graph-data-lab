@@ -121,7 +121,7 @@ the six companies that got no LEI. Each matched company gets an `Identifier (LEI
 | --- | --- | --- |
 | With fiscal periods, no real company misses its third quarter. With calendar periods, 7 did | Apple, Visa, Cisco | `missing_q3_2024` |
 | The quarters of all 99 fiscal years follow each other with no gap, by the dates in the filings alone | | `check_fiscal_quarters` |
-| A filing can declare the wrong fiscal period. AES tagged its 10-Q for March 2024 as `Q2` of fiscal 2022. Electronic Arts tagged its 10-Q for June 2023 as fiscal 2023, not 2024 | AES, Electronic Arts | `check_filing_has_period`, `incomplete_fy2024` |
+| A filing can declare the wrong fiscal period (see the figure in `model/MODEL.md` §5.5). AES tagged its 10-Q for March 2024 as `Q2` of fiscal 2022. Electronic Arts tagged its 10-Q for June 2023 as fiscal 2023, not 2024 | AES, Electronic Arts | `check_filing_has_period`, `incomplete_fy2024` |
 | The dump holds no facts for one 10-K, so the company has no fiscal year and its three 10-Qs report on nothing | S&P Global | `check_filing_has_period` |
 | "Fiscal 2024" is a label, not a date range. It ends between January 2024 and February 2025 | NVIDIA (2024-01-28), Target (2025-02-01) | |
 | Many filers never tag a bare `Liabilities` total | Amazon | `filing_missing_concepts` |

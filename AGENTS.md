@@ -64,6 +64,8 @@ If a command fails, fix the cause before you push. To apply the automatic fixes,
 - Never change or reuse an id in `fixtures/company_ids.json`. A company keeps its id for good.
 - Keep the load order: reference data, the core, the adapters, the claims. `LOAD_ORDER` in
   `scripts/load_stores.py` fixes the order of the files.
+- After a change to the model or a seed, load the stores and draw the figures again:
+  `uv run python -m scripts.load_stores`, then `uv run python -m scripts.render_figures`.
 - Make something a node if a query passes through it. Make it a property if a query only
   filters by it. See `MODEL.md` §5.7.
 - If you add something that arkad's model does not have, note it at the top of `MODEL.md`.

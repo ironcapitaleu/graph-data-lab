@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 486 534" width="486" height="534" font-family="Helvetica, Arial, sans-serif">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8f98"/></marker>
+</defs>
+<path d="M155.1,239.7 Q241.5,220.3 328.0,201.0" fill="none" stroke="#8a8f98" stroke-width="1.4" marker-end="url(#arrow)"/><text x="258.8" y="209.5" font-size="10" fill="#8a8f98" text-anchor="middle">HAS_IDENTIFIER</text>
+<path d="M149.5,226.8 Q241.8,164.8 334.0,102.9" fill="none" stroke="#8a8f98" stroke-width="1.4" marker-end="url(#arrow)"/><text x="260.2" y="145.4" font-size="10" fill="#8a8f98" text-anchor="middle">HAS_IDENTIFIER</text>
+<path d="M155.1,256.3 Q241.5,275.7 328.0,295.0" fill="none" stroke="#8a8f98" stroke-width="1.4" marker-end="url(#arrow)"/><text x="258.8" y="272.5" font-size="10" fill="#8a8f98" text-anchor="middle">REGISTERED_WITH</text>
+<path d="M149.5,269.2 Q241.8,331.2 334.0,393.1" fill="none" stroke="#8a8f98" stroke-width="1.4" marker-end="url(#arrow)"/><text x="260.2" y="336.6" font-size="10" fill="#8a8f98" text-anchor="middle">REGISTERED_WITH</text>
+<circle cx="118.0" cy="248.0" r="38" fill="#f4c5b8" stroke="#1d1f23" stroke-opacity="0.25"/><text x="118.0" y="252.0" font-size="11.5" font-weight="600" fill="#1d1f23" text-anchor="middle">Apple Inc.</text><text x="118.0" y="300.0" font-size="10" fill="#8a8f98" text-anchor="middle">C-000007</text>
+<circle cx="368.0" cy="304.0" r="38" fill="#9dc25a" stroke="#1d1f23" stroke-opacity="0.25"/><text x="368.0" y="308.0" font-size="11.5" font-weight="600" fill="#1d1f23" text-anchor="middle">GLEIF</text><text x="368.0" y="356.0" font-size="10" fill="#8a8f98" text-anchor="middle">HWUPKR0MPOU8FGXBT394</text>
+<circle cx="368.0" cy="416.0" r="38" fill="#9dc25a" stroke="#1d1f23" stroke-opacity="0.25"/><text x="368.0" y="420.0" font-size="11.5" font-weight="600" fill="#1d1f23" text-anchor="middle">SEC</text><text x="368.0" y="468.0" font-size="10" fill="#8a8f98" text-anchor="middle">0000320193</text>
+<circle cx="368.0" cy="192.0" r="38" fill="#d9c8f5" stroke="#1d1f23" stroke-opacity="0.25"/><text x="368.0" y="196.0" font-size="11.5" font-weight="600" fill="#1d1f23" text-anchor="middle">LEI</text><text x="368.0" y="244.0" font-size="10" fill="#8a8f98" text-anchor="middle">HWUPKR0MPOU8FGXBT394</text>
+<circle cx="368.0" cy="80.0" r="38" fill="#d9c8f5" stroke="#1d1f23" stroke-opacity="0.25"/><text x="368.0" y="84.0" font-size="11.5" font-weight="600" fill="#1d1f23" text-anchor="middle">CIK</text><text x="368.0" y="132.0" font-size="10" fill="#8a8f98" text-anchor="middle">0000320193</text>
+</svg>

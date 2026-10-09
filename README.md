@@ -35,7 +35,9 @@ fixtures/
   sp500.sql         the same seed for Postgres
   gleif_records.json  the GLEIF record per company, as fetched from the GLEIF API
   company_ids.json  our id of each company and the identifiers that lead to it
+docs/images/        figures for the Markdown files, drawn from the data in Neo4j
 scripts/
+  render_figures.py       draws the figures in docs/images/ again
   load_stores.py          creates both stores from nothing, in a fixed order
   fetch_gleif.py          matches each S&P 500 company to its GLEIF record
   generate_sp500_seed.py  writes the two sp500 files and their expected rows
@@ -84,11 +86,63 @@ uv run python -m scripts.load_stores
 It loads `model/schema`, then `fixtures/seed`, then `fixtures/sp500`. The tests use the same
 function, so both ways give the same stores.
 
-To look at the graph, open the Neo4j Browser at <http://localhost:7474>. Log in as `neo4j` with
-password `graph-data-lab`, then run `MATCH (n) RETURN n`.
-
 Connection settings come from `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` and `POSTGRES_DSN`. The
 defaults match `docker-compose.yml`.
+
+## Look at the data
+
+Open the Neo4j Browser at <http://localhost:7474>. Log in as `neo4j` with password
+`graph-data-lab`. Each query below returns a graph, so pick the "Graph" view of the result.
+
+**A company, its identifiers, and its registrations.** Find it by a handle, here the LEI:
+
+```cypher
+MATCH (:Identifier {scheme: 'LEI', value: 'HWUPKR0MPOU8FGXBT394'})<-[:HAS_IDENTIFIER]-(c:Company)
+MATCH p = (c)-[:HAS_IDENTIFIER|REGISTERED_WITH]->()
+RETURN p
+```
+
+![Apple with its CIK, its LEI, and its registrants at the SEC and at GLEIF](docs/images/company-identity.svg)
+
+**What the SEC says about a company.** The fiscal year, its quarters, and the filings:
+
+```cypher
+MATCH p = (:Company {name: 'Apple Inc.'})-[:REGISTERED_WITH]->
+          (:Registrant {source: 'SEC'})-[:HAS_FISCAL_YEAR]->(:FiscalYear)
+          -[:HAS_QUARTER]->(q:FiscalQuarter)
+OPTIONAL MATCH f = (:Filing)-[:REPORTS_ON]->(q)
+OPTIONAL MATCH k = (:Filing)-[:REPORTS_ON]->(:FiscalYear {registrant: '0000320193'})
+RETURN p, f, k
+```
+
+![Apple, its SEC registrant, fiscal year 2024, the quarters, and the filings](docs/images/sec-fiscal-tree.svg)
+
+**All companies in one industry.** SIC 7372 is prepackaged software:
+
+```cypher
+MATCH p = (:Company)-[:IN_INDUSTRY]->(:Industry {code: '7372'})
+RETURN p
+```
+
+**The ownership claims of the fictional companies**, with one conflict between two sources:
+
+```cypher
+MATCH p = (:Company)-[:SUBSIDIARY_OF|OWNS_STAKE_IN]->(:Company)
+RETURN p
+```
+
+![Ownership claims between the fictional companies](docs/images/ownership-claims.svg)
+
+`model/MODEL.md` explains each picture: §5.5 for the adapters, §5.6 for company identity, §5.7
+for the choice between a node and a property, and §5.8 for what works and what does not.
+
+Three notes on the Browser:
+
+- A result frame goes stale when the stores load again. Run the query again.
+- To change what a circle shows, click its label in the result frame and pick a caption.
+- The figures in this repo are not screenshots. `scripts/render_figures.py` runs a query per
+  figure against Neo4j and draws the result, so the figures follow the data. Run it after you
+  change the model or the seed: `uv run python -m scripts.render_figures`.
 
 ## Regenerate the S&P 500 seed
 
