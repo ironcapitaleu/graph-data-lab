@@ -2,21 +2,39 @@
 
 The seed has two parts. `tests/test_parity.py` fails if the two stores drift apart.
 
-- `seed.cypher` and `seed.sql`: six fictional companies with planted gaps and violations. Real
-  data has no broken identifiers and no conflicting ownership claims, so the checks need them.
-- `sp500.cypher` and `sp500.sql`: 100 real S&P 500 companies from SEC EDGAR. See
+- `seed.cypher` and `seed.sql`: the reference data and six fictional companies with planted gaps
+  and violations. Real data has no broken identifiers and no conflicting ownership claims, so
+  the checks need them.
+- `sp500.cypher` and `sp500.sql`: 100 real S&P 500 companies from SEC EDGAR and GLEIF. See
   "S&P 500 companies" below.
+
+`scripts/load_stores.py` loads the files in this order: `model/schema`, `fixtures/seed`,
+`fixtures/sp500`. Inside each file the order is: reference data, the core, the adapters, the
+claims.
+
+`company_ids.json` records our id of each company and the identifiers that lead to it. The
+generator reads it and adds new companies, so a company keeps its id for good. Never change or
+reuse an id in this file.
+
+## Reference data
+
+| Source | Kind |
+| --- | --- |
+| `SEC` | regulator |
+| `GLEIF` | registry |
+| `EXCHANGE-LIST` | exchange |
+| `VENDOR-S2` | vendor (fictional) |
 
 ## Companies
 
-| Company | `company_id` | Identifiers | Files with SEC |
+| Company | `company_id` | Identifiers | Registered with SEC |
 | --- | --- | --- | --- |
-| Alpha Holdings Inc | `LEI:5493001ALPHAHOLD0020` | LEI (primary), CIK | yes |
-| Beta Corp | `LEI:5493002BETACORP00097` | LEI (primary), CIK | yes |
-| Gamma Ltd | `CIK:0000000003` | CIK only (no LEI fallback) | yes |
-| Delta GmbH | `LEI:5493004DELTAGMBH0018` | LEI | no |
-| Epsilon SA | `LEI:5493005EPSILONSA0096` | LEI (primary), malformed CIK | no |
-| Orphan Inc | `TMP:orphan` | none | no |
+| Alpha Holdings Inc | `C-000001` | LEI (primary), CIK | yes |
+| Beta Corp | `C-000002` | LEI (primary), CIK | yes |
+| Gamma Ltd | `C-000003` | CIK only | yes |
+| Delta GmbH | `C-000004` | LEI (primary), and the CIK of Gamma | no |
+| Epsilon SA | `C-000005` | LEI (primary), malformed CIK | no |
+| Orphan Inc | `C-000006` | none | no |
 
 Ownership chain (`SUBSIDIARY_OF`): Delta → Gamma → Beta → Alpha.
 
@@ -35,6 +53,8 @@ Each row is what a query in `queries/` must find.
 | Orphan has no identifier | `check_company_has_identifier`, `check_one_primary_identifier` |
 | Epsilon's CIK `12AB` is malformed | `check_identifier_format` |
 | Alpha → Epsilon claim of 120 % | `check_ownership_percentage` |
+| The same claim names the source `NEWS-FEED`, which the source list does not hold | `check_source_known` |
+| Delta holds the CIK `0000000003`, which belongs to Gamma | `check_identifier_one_company` |
 | Gamma → Delta claim has `as_of` after `observed_at` | `check_claim_dates` |
 
 ## S&P 500 companies
@@ -45,7 +65,8 @@ Each row is what a query in `queries/` must find.
 | --- | --- | --- |
 | Companies | CIKs from arkad `SP500_CIKS`: arkad's 7 must-pass companies, its 3 known gaps (JPMorgan Chase, Exxon Mobil, Amazon), and an even sample of 90 more | 100 |
 | Name, country, first filing date | EDGAR `submissions` | |
-| Identifier | The CIK, as primary identifier. EDGAR gives no LEI, so `company_id` is `CIK:<cik>` | 100 |
+| `company_id` | Our own id, `C-000007` to `C-000106`, from `company_ids.json` | 100 |
+| Identifier | The CIK, as primary identifier | 100 |
 | `Registrant` (SEC) | One per company, keyed by CIK | 100 |
 | `Registrant` (GLEIF) and LEI identifier | One per company that `scripts/fetch_gleif.py` matched, keyed by LEI. See "GLEIF records" below | 94 |
 | `FiscalYear` | Fiscal year 2024, with the dates of the 10-K that declares it | 99 |
@@ -55,7 +76,7 @@ Each row is what a query in `queries/` must find.
 | `LISTED_ON` | EDGAR tickers on NYSE, Nasdaq, and Cboe. OTC tickers are left out | 140 |
 | `IN_INDUSTRY` | EDGAR SIC code | 100 |
 
-Each claim carries `source: SEC-EDGAR`, and `as_of` and `observed_at` of 2025-12-04, the date of
+Each claim carries `source: SEC`, and `as_of` and `observed_at` of 2025-12-04, the date of
 the EDGAR dump. The first tag in arkad's list gives confidence `Exact`, a later tag gives `Synonym`.
 
 ### How a fiscal period gets its dates
@@ -84,7 +105,7 @@ holds:
 
 `fixtures/gleif_records.json` holds the accepted record per CIK with the facts it matched on, and
 the six companies that got no LEI. Each matched company gets an `Identifier (LEI)` and a second
-`Registrant`, below the `Regulator` node `GLEIF`. `company_id` stays `CIK:<cik>`.
+`Registrant` with `source: GLEIF`. The `company_id` does not change when the LEI arrives.
 
 | Finding | Detail |
 | --- | --- |
@@ -92,7 +113,7 @@ the six companies that got no LEI. Each matched company gets an `Identifier (LEI
 | 6 companies get no LEI | Amazon, PayPal, Applied Materials, O'Reilly, Willis Towers Watson: no record passes. Public Storage: two records pass |
 | 11 of 94 LEIs lapsed | The company did not renew the registration. Host Hotels lapsed in 2014, Meta in September 2026 |
 | The two sources spell 61 of 94 names differently | EDGAR: `SCHWAB CHARLES CORP`. GLEIF: `THE CHARLES SCHWAB CORPORATION` |
-| arkad's key rule would give 94 companies a new `company_id` | The key changes from `CIK:…` to `LEI:…` on the day the LEI arrives |
+| arkad's key rule would give 94 companies a new `company_id` | The key changes from `CIK:…` to `LEI:…` on the day the LEI arrives. The lab's own id stays |
 
 ### What the real data shows
 

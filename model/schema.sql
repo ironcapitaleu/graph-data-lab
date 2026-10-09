@@ -1,9 +1,36 @@
 -- Graph model as relational tables, PostgreSQL 16. See MODEL.md for the node and edge tables.
--- Nodes are tables keyed like the graph. Edges are tables with the endpoint keys as columns.
+-- Nodes are tables keyed like the graph. Edges are tables, foreign keys, or columns.
 -- Data-quality rules are queries in queries/, not CHECK constraints, so the seed can hold
 -- violations for the checks to find.
+-- The tables stand in load order: reference data, the core, the adapters, the claims.
 
--- Ring 1: axiomatic core
+-- Reference data: the sources and our own vocabulary
+CREATE TABLE source (
+    code text PRIMARY KEY,
+    name text NOT NULL,
+    kind text NOT NULL -- regulator | registry | exchange | vendor
+);
+
+CREATE TABLE concept (
+    element text PRIMARY KEY,
+    kind    text NOT NULL -- instant | duration
+);
+
+CREATE TABLE form_type (
+    source text NOT NULL REFERENCES source,
+    code   text NOT NULL,
+    PRIMARY KEY (source, code)
+);
+
+CREATE TABLE requires (
+    source  text NOT NULL,
+    form    text NOT NULL,
+    element text NOT NULL REFERENCES concept,
+    PRIMARY KEY (source, form, element),
+    FOREIGN KEY (source, form) REFERENCES form_type
+);
+
+-- Ring 1: axiomatic core. `company_id` is our own id and carries no meaning.
 CREATE TABLE company (
     company_id text PRIMARY KEY,
     name       text NOT NULL,
@@ -22,91 +49,61 @@ CREATE TABLE has_identifier (
     scheme     text    NOT NULL,
     value      text    NOT NULL,
     since      date    NOT NULL,
-    status     text    NOT NULL,
+    status     text    NOT NULL, -- active | lapsed
     is_primary boolean NOT NULL,
     PRIMARY KEY (company_id, scheme, value),
     FOREIGN KEY (scheme, value) REFERENCES identifier
 );
 
--- Our own vocabulary and shared dimensions
-CREATE TABLE concept (
-    element text PRIMARY KEY,
-    kind    text NOT NULL -- instant | duration
-);
+-- Adapters. Each adapter table starts its key with the source, so the data of two sources
+-- never mixes.
 
--- A calendar period. Fiscal periods belong to the adapter: see fiscal_year and fiscal_quarter.
-CREATE TABLE period (
-    key        text PRIMARY KEY,
-    kind       text NOT NULL, -- quarter
-    start_date date NOT NULL,
-    end_date   date NOT NULL
-);
-
--- SEC adapter
-CREATE TABLE regulator (
-    code text PRIMARY KEY,
-    name text NOT NULL
-);
-
-CREATE TABLE form_type (
-    regulator text NOT NULL REFERENCES regulator,
-    code      text NOT NULL,
-    PRIMARY KEY (regulator, code)
-);
-
-CREATE TABLE requires (
-    regulator text NOT NULL,
-    form      text NOT NULL,
-    element   text NOT NULL REFERENCES concept,
-    PRIMARY KEY (regulator, form, element),
-    FOREIGN KEY (regulator, form) REFERENCES form_type
-);
-
--- The company as the regulator knows it. The core company delegates to the adapter here.
--- REGISTERED_AS is the `company_id` column. FILES_WITH is the `regulator` column with
--- `first_filed`.
+-- The company as one source knows it. The core company delegates to the adapter here.
+-- REGISTERED_WITH is the `company_id` column with `since`.
 CREATE TABLE registrant (
-    regulator   text NOT NULL REFERENCES regulator,
-    native_id   text NOT NULL, -- SEC: CIK
-    company_id  text NOT NULL REFERENCES company,
-    name        text NOT NULL,
-    first_filed date NOT NULL,
+    source          text NOT NULL REFERENCES source,
+    native_id       text NOT NULL, -- SEC: CIK. GLEIF: LEI
+    company_id      text NOT NULL REFERENCES company,
+    registered_name text NOT NULL,
+    since           date NOT NULL,
     -- Set only by a source that gives them (GLEIF)
-    jurisdiction text,
-    status       text, -- GLEIF: ISSUED | LAPSED | ...
-    next_renewal date,
-    PRIMARY KEY (regulator, native_id)
+    jurisdiction    text,
+    status          text, -- GLEIF: ISSUED | LAPSED | ...
+    next_renewal    date,
+    PRIMARY KEY (source, native_id)
 );
 
 -- HAS_FISCAL_YEAR is the foreign key to `registrant`.
 CREATE TABLE fiscal_year (
-    regulator   text    NOT NULL,
+    source      text    NOT NULL,
     registrant  text    NOT NULL,
     fiscal_year integer NOT NULL,
     start_date  date    NOT NULL,
     end_date    date    NOT NULL,
-    PRIMARY KEY (regulator, registrant, fiscal_year),
-    FOREIGN KEY (regulator, registrant) REFERENCES registrant
+    PRIMARY KEY (source, registrant, fiscal_year),
+    FOREIGN KEY (source, registrant) REFERENCES registrant
 );
 
--- HAS_QUARTER is the foreign key to `fiscal_year`. ALIGNS_WITH is the `period_key` column.
+-- HAS_QUARTER is the foreign key to `fiscal_year`.
 CREATE TABLE fiscal_quarter (
-    regulator   text    NOT NULL,
-    registrant  text    NOT NULL,
-    fiscal_year integer NOT NULL,
-    quarter     integer NOT NULL, -- 1 to 4
-    start_date  date    NOT NULL,
-    end_date    date    NOT NULL,
-    period_key  text REFERENCES period,
-    PRIMARY KEY (regulator, registrant, fiscal_year, quarter),
-    FOREIGN KEY (regulator, registrant, fiscal_year) REFERENCES fiscal_year
+    source           text    NOT NULL,
+    registrant       text    NOT NULL,
+    fiscal_year      integer NOT NULL,
+    quarter          integer NOT NULL, -- 1 to 4
+    start_date       date    NOT NULL,
+    end_date         date    NOT NULL,
+    calendar_quarter text    NOT NULL, -- e.g. Q3-2024: holds the middle day of the quarter
+    PRIMARY KEY (source, registrant, fiscal_year, quarter),
+    FOREIGN KEY (source, registrant, fiscal_year) REFERENCES fiscal_year
 );
 
--- HAS_FILING is the `registrant` column. The form link is the `form` column.
+CREATE INDEX fiscal_quarter_calendar ON fiscal_quarter (calendar_quarter);
+
+-- HAS_FILING is the `registrant` column.
 -- REPORTS_ON is `fiscal_year` with `quarter`: a 10-K reports on the year and leaves `quarter`
 -- NULL, a 10-Q reports on a quarter. Both are NULL while the period of a filing is unresolved.
 CREATE TABLE filing (
-    regulator   text NOT NULL REFERENCES regulator,
+    source      text NOT NULL,
     native_id   text NOT NULL,
     registrant  text NOT NULL,
     form        text NOT NULL,
@@ -114,23 +111,25 @@ CREATE TABLE filing (
     period_end  date NOT NULL,
     fiscal_year integer,
     quarter     integer,
-    PRIMARY KEY (regulator, native_id),
-    FOREIGN KEY (regulator, form) REFERENCES form_type,
-    FOREIGN KEY (regulator, registrant) REFERENCES registrant,
-    FOREIGN KEY (regulator, registrant, fiscal_year) REFERENCES fiscal_year,
-    FOREIGN KEY (regulator, registrant, fiscal_year, quarter) REFERENCES fiscal_quarter
+    PRIMARY KEY (source, native_id),
+    FOREIGN KEY (source, form) REFERENCES form_type,
+    FOREIGN KEY (source, registrant) REFERENCES registrant,
+    FOREIGN KEY (source, registrant, fiscal_year) REFERENCES fiscal_year,
+    FOREIGN KEY (source, registrant, fiscal_year, quarter) REFERENCES fiscal_quarter
 );
 
 CREATE TABLE reports_concept (
-    regulator  text NOT NULL,
+    source     text NOT NULL,
     native_id  text NOT NULL,
     element    text NOT NULL REFERENCES concept,
     confidence text NOT NULL, -- Exact | Synonym | Derived | Computed
-    PRIMARY KEY (regulator, native_id, element),
-    FOREIGN KEY (regulator, native_id) REFERENCES filing
+    PRIMARY KEY (source, native_id, element),
+    FOREIGN KEY (source, native_id) REFERENCES filing
 );
 
 -- Claim layer. Every claim carries the envelope: source, as_of, observed_at, verifiability.
+-- `source` holds a code from the `source` table. It has no foreign key: `check_source_known`
+-- finds a claim with an unknown source.
 -- Claims are append-only, so the key includes the envelope and conflicting claims coexist.
 CREATE TABLE exchange (
     mic  text PRIMARY KEY,

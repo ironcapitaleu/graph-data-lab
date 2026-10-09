@@ -12,30 +12,31 @@ from neo4j import Session
 # Each pair counts the same thing in both stores. An edge that is a column or a foreign key in
 # SQL counts as the rows of its table.
 COUNTS: list[tuple[LiteralString, LiteralString]] = [
+    ("MATCH (n:Source) RETURN count(n)", "SELECT count(*) FROM source"),
+    ("MATCH (n:Concept) RETURN count(n)", "SELECT count(*) FROM concept"),
+    ("MATCH (n:FormType) RETURN count(n)", "SELECT count(*) FROM form_type"),
     ("MATCH (n:Company) RETURN count(n)", "SELECT count(*) FROM company"),
     ("MATCH (n:Identifier) RETURN count(n)", "SELECT count(*) FROM identifier"),
-    ("MATCH (n:Concept) RETURN count(n)", "SELECT count(*) FROM concept"),
-    ("MATCH (n:Period) RETURN count(n)", "SELECT count(*) FROM period"),
-    ("MATCH (n:Regulator) RETURN count(n)", "SELECT count(*) FROM regulator"),
-    ("MATCH (n:FormType) RETURN count(n)", "SELECT count(*) FROM form_type"),
     ("MATCH (n:Registrant) RETURN count(n)", "SELECT count(*) FROM registrant"),
+    (
+        "MATCH (n:Registrant {source: 'GLEIF'}) RETURN count(n)",
+        "SELECT count(*) FROM registrant WHERE source = 'GLEIF'",
+    ),
     ("MATCH (n:FiscalYear) RETURN count(n)", "SELECT count(*) FROM fiscal_year"),
     ("MATCH (n:FiscalQuarter) RETURN count(n)", "SELECT count(*) FROM fiscal_quarter"),
+    (
+        "MATCH (n:FiscalQuarter {calendar_quarter: 'Q3-2024'}) RETURN count(n)",
+        "SELECT count(*) FROM fiscal_quarter WHERE calendar_quarter = 'Q3-2024'",
+    ),
     ("MATCH (n:Filing) RETURN count(n)", "SELECT count(*) FROM filing"),
     ("MATCH (n:Exchange) RETURN count(n)", "SELECT count(*) FROM exchange"),
     ("MATCH (n:Industry) RETURN count(n)", "SELECT count(*) FROM industry"),
-    ("MATCH ()-[r:HAS_IDENTIFIER]->() RETURN count(r)", "SELECT count(*) FROM has_identifier"),
     ("MATCH ()-[r:REQUIRES]->() RETURN count(r)", "SELECT count(*) FROM requires"),
-    ("MATCH ()-[r:REGISTERED_AS]->() RETURN count(r)", "SELECT count(*) FROM registrant"),
-    ("MATCH ()-[r:FILES_WITH]->() RETURN count(r)", "SELECT count(*) FROM registrant"),
+    ("MATCH ()-[r:HAS_IDENTIFIER]->() RETURN count(r)", "SELECT count(*) FROM has_identifier"),
+    ("MATCH ()-[r:REGISTERED_WITH]->() RETURN count(r)", "SELECT count(*) FROM registrant"),
     ("MATCH ()-[r:HAS_FISCAL_YEAR]->() RETURN count(r)", "SELECT count(*) FROM fiscal_year"),
     ("MATCH ()-[r:HAS_QUARTER]->() RETURN count(r)", "SELECT count(*) FROM fiscal_quarter"),
-    (
-        "MATCH ()-[r:ALIGNS_WITH]->() RETURN count(r)",
-        "SELECT count(*) FROM fiscal_quarter WHERE period_key IS NOT NULL",
-    ),
     ("MATCH ()-[r:HAS_FILING]->() RETURN count(r)", "SELECT count(*) FROM filing"),
-    ("MATCH ()-[r:OF_FORM]->() RETURN count(r)", "SELECT count(*) FROM filing"),
     (
         "MATCH ()-[r:REPORTS_ON]->() RETURN count(r)",
         "SELECT count(*) FROM filing WHERE fiscal_year IS NOT NULL",
@@ -49,10 +50,21 @@ COUNTS: list[tuple[LiteralString, LiteralString]] = [
     ("MATCH ()-[r:IN_INDUSTRY]->() RETURN count(r)", "SELECT count(*) FROM in_industry"),
     ("MATCH ()-[r:SUBSIDIARY_OF]->() RETURN count(r)", "SELECT count(*) FROM subsidiary_of"),
     ("MATCH ()-[r:OWNS_STAKE_IN]->() RETURN count(r)", "SELECT count(*) FROM owns_stake_in"),
+    # The graph holds no node and no edge that the tables do not account for.
+    (
+        "MATCH (n) RETURN count(DISTINCT labels(n))",
+        "SELECT 11",
+    ),
+    (
+        "MATCH ()-[r]->() RETURN count(DISTINCT type(r))",
+        "SELECT 12",
+    ),
 ]
 
 
-@pytest.mark.parametrize(("cypher", "sql"), COUNTS, ids=[cypher.split()[1] for cypher, _ in COUNTS])
+@pytest.mark.parametrize(
+    ("cypher", "sql"), COUNTS, ids=[" ".join(cypher.split()[1:-2]) for cypher, _ in COUNTS]
+)
 def test_should_hold_the_same_count_for_both_stores(
     cypher: LiteralString,
     sql: LiteralString,

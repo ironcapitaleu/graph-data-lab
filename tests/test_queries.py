@@ -11,7 +11,7 @@ import pytest
 from neo4j import Session
 from psycopg.rows import dict_row
 
-from tests.repo_files import QUERIES, read_statement
+from scripts.load_stores import QUERIES, read_statement
 
 QUERY_NAMES = sorted(path.name for path in QUERIES.iterdir() if path.is_dir())
 

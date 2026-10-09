@@ -1,6 +1,6 @@
 [
-  {"company_id": "CIK:0000000003", "missing_period": "FY"},
-  {"company_id": "LEI:5493002BETACORP00097", "missing_period": "Q3"},
-  {"company_id": "CIK:0000712515", "missing_period": "Q1"},
-  {"company_id": "CIK:0000874761", "missing_period": "Q1"}
+  {"company_id": "C-000003", "missing_period": "FY"},
+  {"company_id": "C-000002", "missing_period": "Q3"},
+  {"company_id": "C-000019", "missing_period": "Q1"},
+  {"company_id": "C-000043", "missing_period": "Q1"}
 ]

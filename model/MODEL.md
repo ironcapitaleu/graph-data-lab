@@ -16,6 +16,11 @@
 > - An explicit adapter layer under the core company: `Registrant`, `FiscalYear`, and
 >   `FiscalQuarter`. See "5.5 The adapter layer" below. It replaces `COVERS_PERIOD`,
 >   `FILED_UNDER`, and the edges from `Company` to `Filing` and to `Regulator`.
+> - `company_id` is our own id with no meaning, for example `C-000007`. arkad derives it from
+>   the LEI, with the CIK as fallback. See "5.6 Company identity" below.
+> - `Regulator` is now `Source`, with a `kind`. Claims and adapter nodes name it by its code.
+> - No node for a shared label. `Period`, `ALIGNS_WITH`, `OF_FORM`, and the edge from a
+>   registrant to its source are gone. See "5.7 Node or property" below.
 
 ## 5. Universal Knowledge Graph (Knowledge-Base Layer)
 
@@ -30,21 +35,23 @@ extensible.
 
 | Node | Ring | Key | Notes |
 | --- | --- | --- | --- |
-| `Company` | **core — axiomatic** | `company_id` (§4) | *the* non-negotiable node; entity_name, country, status |
+| `Company` | **core — axiomatic** | `company_id`: our own id, no meaning (§5.6) | *the* non-negotiable node; entity_name, country, status |
 | `Identifier` | **core — axiomatic** | `(scheme, value)` e.g. `(LEI, …)`, `(CIK, …)` | identity records attached to `Company`; each verifiable against its issuing registry (GLEIF, EDGAR) |
 | `Concept` | core — ours by construction | `CanonicalElement` | our own vocabulary — axiomatic because *we* define it (enables "which concepts expected/missing") |
-| `Period` | shared dimension | `key` e.g. `Q3-2024` | deterministic **calendar** quarter — verifiable by arithmetic, safe to share. Fiscal periods are adapter nodes (§5.5) |
-| `Regulator`/`DataSource` | adapter-bridge | `code` (SEC, FCA, BaFin, ESMA) | |
-| `Registrant` | adapter | `regulator + native_id` (SEC: CIK) | the company as the regulator knows it; the root of everything the adapter holds for a company (§5.5) |
-| `FiscalYear` | adapter | `regulator + registrant + fiscal_year` | start_date, end_date as the 10-K declares them |
-| `FiscalQuarter` | adapter | `… + quarter` (1 to 4) | start_date, end_date; the fourth quarter has no filing of its own |
-| `Filing` | adapter | `regulator + native_id` (SEC: accession) | form, filed_date, period_end, taxonomy version |
+| `Source` | reference data | `code` (SEC, GLEIF, a vendor) | name, kind (regulator, registry, exchange, vendor). A list to look up, with no edges (§5.7) |
+| `FormType` | reference data | `source + code` (SEC, 10-K) | carries `REQUIRES` to the concepts a form must report |
+| `Registrant` | adapter | `source + native_id` (SEC: CIK, GLEIF: LEI) | the company as one source knows it; the root of everything the adapter holds for a company (§5.5). registered_name, and what only some sources give: jurisdiction, status, next_renewal |
+| `FiscalYear` | adapter | `source + registrant + fiscal_year` | start_date, end_date as the 10-K declares them |
+| `FiscalQuarter` | adapter | `… + quarter` (1 to 4) | start_date, end_date, calendar_quarter; the fourth quarter has no filing of its own |
+| `Filing` | adapter | `source + native_id` (SEC: accession) | form, filed_date, period_end, taxonomy version |
 | `Exchange` | reference data | `mic` (ISO 10383) | the *list* is a verifiable standard; any given *listing* is a claim (§5.2) |
 | `Industry`/`Sector` | **claim layer — not core** | `scheme+code` (GICS/SIC/NACE) | classifications are source-owned opinions (GICS is S&P/MSCI's, SIC is the SEC's), multi-label, and disagree across schemes — attached only via source-attributed `IN_INDUSTRY` claims |
 
-**Build order (review directive):** ring 1 (`Company` + `Identifier`) → the SEC adapter
-(`Regulator`, `Filing` + structural edges) → the bridge (`HAS_FILING` via CIK→`CompanyId`
-resolution, §11). Claim-layer nodes enter only as their sources are onboarded.
+**Build order (review directive):** reference data (`Source`, `Concept`, `FormType`) → ring 1
+(`Company` + `Identifier`) → the adapters (`Registrant`, fiscal periods, `Filing` + structural
+edges), each joined to the core by the bridge `REGISTERED_WITH` (CIK→`CompanyId` resolution,
+§11) → the claim layer, as its sources are onboarded. The seed files and
+`scripts/load_stores.py` follow this order.
 
 ### 5.2 Edges — structural vs claims
 
@@ -53,13 +60,12 @@ resolution, §11). Claim-layer nodes enter only as their sources are onboarded.
 | Edge | From → To | Properties |
 | --- | --- | --- |
 | `HAS_IDENTIFIER` | Company → Identifier | since, status (active / lapsed) |
-| `REGISTERED_AS` | Company → Registrant | the bridge from the core to the adapter (CIK → `CompanyId` resolution, §11) |
-| `FILES_WITH` | Registrant → Regulator | first_filed |
+| `REGISTERED_WITH` | Company → Registrant | since. The bridge from the core to an adapter (CIK → `CompanyId` resolution, §11) |
 | `HAS_FILING` | Registrant → Filing | |
 | `HAS_FISCAL_YEAR` | Registrant → FiscalYear | |
 | `HAS_QUARTER` | FiscalYear → FiscalQuarter | |
 | `REPORTS_ON` | Filing → FiscalYear or FiscalQuarter | a 10-K reports on the year, a 10-Q on a quarter; absent while the period is unresolved |
-| `ALIGNS_WITH` | FiscalQuarter → Period | the calendar quarter that holds the middle day of the fiscal quarter; for comparison across companies |
+| `REQUIRES` | FormType → Concept | the concepts a form must report |
 | `REPORTS_CONCEPT` | Filing → Concept | resolved confidence (structural completeness) |
 
 **Relationship edges — source-attributed claims.** A relationship assertion is only as good
@@ -68,7 +74,7 @@ coexist with `… 53% as of 2026-01-16 per S2` (different `as_of` — a legitima
 not a conflict) *and* with `… 53% as of 2026-01-31 per S2` (same `as_of` — a genuine
 conflict). So every relationship edge carries a uniform **claim envelope** beside its payload:
 
-- `source` — which adapter/dataset asserted it (provenance, §8.2)
+- `source` — the code of the `Source` that asserted it (provenance, §8.2)
 - `as_of` — the date the assertion is *about*; `observed_at` — when we ingested it
 - `verifiability` — `Verified` (regulatory filing / official registry) · `Reported`
   (reputable aggregator or data vendor) · `Alleged` (news, unconfirmed)
@@ -92,44 +98,46 @@ for each of these"):
 | Element | Check |
 | --- | --- |
 | `Company` | has ≥ 1 `Identifier`; exactly one *primary* id; no orphan companies |
-| `Identifier` | validates against its scheme (LEI check digit, CIK format); LEI: GLEIF status current (issued, not lapsed) |
+| `Identifier` | validates against its scheme (LEI check digit, CIK format); LEI: GLEIF status current (issued, not lapsed); belongs to one company (`check_identifier_one_company`) |
 | `HAS_FILING` / `Filing` | filing exists verbatim in the adapter raw store (§8 drift check) |
 | `FiscalYear` / `FiscalQuarter` | the quarters follow each other with no gap and no overlap and cover the year (`check_fiscal_quarters`) |
 | `REPORTS_ON` | every filing reports on a fiscal period (`check_filing_has_period`) |
 | `REPORTS_CONCEPT` | expected-concept set for the form type covered (completeness, §5.4) |
 | ownership claims | `percentage ∈ (0, 100]`; `as_of ≤ observed_at`; conflict detector: same edge + same `as_of`, different payloads |
+| every claim | its `source` is in the `Source` list (`check_source_known`) |
 
 ### 5.3 Diagram
 
 ```mermaid
 graph LR
+  subgraph Reference["Reference data (loaded first)"]
+    S["Source (SEC / GLEIF / vendor)"]
+    T["FormType"]
+    K["Concept (CanonicalElement)"]
+  end
   subgraph CoreAx["Ring 1 — axiomatic core (every company ever)"]
-    C["Company (PK: CompanyId)"]
+    C["Company (PK: our own id)"]
     ID["Identifier (LEI / CIK / …)"]
   end
-  subgraph Adapter["SEC adapter (+ shared dimensions)"]
-    R["Regulator (SEC/FCA/…)"]
-    G["Registrant (native id: CIK)"]
+  subgraph Adapter["One adapter per source"]
+    G["Registrant (native id: CIK or LEI)"]
     Y["FiscalYear"]
     Q["FiscalQuarter"]
     F["Filing (native id: accession)"]
-    K["Concept (CanonicalElement)"]
-    P["Period (calendar quarter)"]
   end
   subgraph Claims["Claim layer (source-attributed)"]
     E["Exchange"]
     I["Industry (per scheme)"]
     C2["Company (related)"]
   end
+  T -- REQUIRES --> K
   C -- HAS_IDENTIFIER --> ID
-  C -- REGISTERED_AS --> G
-  G -- FILES_WITH --> R
+  C -- REGISTERED_WITH --> G
   G -- HAS_FILING --> F
   G -- HAS_FISCAL_YEAR --> Y
   Y -- HAS_QUARTER --> Q
   F -- REPORTS_ON --> Y
   F -- REPORTS_ON --> Q
-  Q -- ALIGNS_WITH --> P
   F -- REPORTS_CONCEPT --> K
   C -. "LISTED_ON {source, as_of}" .-> E
   C -. "IN_INDUSTRY {source, scheme}" .-> I
@@ -171,36 +179,89 @@ central,"* not the data-quality checks.
 
 ### 5.5 The adapter layer (lab addition)
 
-The core `Company` knows nothing about fiscal years or filings. It delegates to an adapter through
-one edge, `REGISTERED_AS`. Everything the SEC says about a company hangs below its `Registrant`:
+The core `Company` knows nothing about fiscal years or filings. It delegates to a source through
+one edge, `REGISTERED_WITH`. Everything one source says about a company hangs below one
+`Registrant`:
 
 ```text
-Company (core)
- └─ REGISTERED_AS → Registrant (SEC, CIK)
-      ├─ FILES_WITH → Regulator
-      ├─ HAS_FILING → Filing
-      └─ HAS_FISCAL_YEAR → FiscalYear
-           ├─ REPORTS_ON ← Filing (10-K)
-           └─ HAS_QUARTER → FiscalQuarter ─ ALIGNS_WITH → Period (calendar)
-                └─ REPORTS_ON ← Filing (10-Q)
+Company (core, C-000007)
+ ├─ REGISTERED_WITH → Registrant (SEC, CIK 0000320193)
+ │    ├─ HAS_FILING → Filing
+ │    └─ HAS_FISCAL_YEAR → FiscalYear
+ │         ├─ REPORTS_ON ← Filing (10-K)
+ │         └─ HAS_QUARTER → FiscalQuarter {calendar_quarter}
+ │              └─ REPORTS_ON ← Filing (10-Q)
+ └─ REGISTERED_WITH → Registrant (GLEIF, LEI HWUPKR0MPOU8FGXBT394)
 ```
+
+Four rules keep the adapters apart:
+
+1. **One root per company and source.** The `Registrant` is the only door from the core into a
+   source.
+2. **The source starts every key.** A fiscal year is `(source, registrant, fiscal_year)`, a filing
+   is `(source, native_id)`. Data of two sources never merges into one node.
+3. **A subtree links only to itself, to the core, and to reference data.** Two sources meet
+   through `calendar_quarter` and `Concept`, never directly.
+4. **Each adapter node leads up to one root.** That root names the source.
+
+Postgres enforces rules 2 to 4 with composite foreign keys. Neo4j has no foreign keys. A check
+for these rules needs a planted violation, and Postgres rejects such a row, so the lab has no
+such check.
 
 - **A fiscal period is adapter data, not a shared dimension.** Apple's fiscal year 2024 runs from
   2023-10-01 to 2024-09-28. No arithmetic gives these dates: the filing declares them. So the
   node has a source, and `check_fiscal_quarters` tests it for consistency.
 - **A fiscal year number is the filer's own label.** NVIDIA calls the year that ends in January
   2024 "fiscal 2024". Target gives that name to the year that ends in February 2025.
-- **`Period` stays a calendar quarter in the trusted core.** `ALIGNS_WITH` connects a fiscal
-  quarter to it. Use this edge to compare companies with different fiscal years.
+- **`calendar_quarter` compares companies.** It holds the calendar quarter of the middle day of
+  a fiscal quarter, for example `Q3-2024`. Filter on it to compare companies with different
+  fiscal years.
 - **A filing stays attributable.** It hangs on the period it reports on, so each period leads to
   its source in one hop. `HAS_FILING` holds every filing, also one whose period is unresolved.
 - **The fourth quarter has no 10-Q.** Its node exists, and its numbers are the year minus the
   first three quarters.
-- **A second source adds a second `Registrant`** below the same company. The core does not
-  change. The seed shows this with GLEIF: 94 companies have an SEC registrant and a GLEIF
-  registrant. GLEIF is a registry, not a regulator, so the names `Regulator`, `Registrant`, and
-  `FILES_WITH` fit it badly. A rename to `Source` is open.
-- **`Registrant` holds a few optional properties** that only some sources give: `jurisdiction`,
-  `status`, and `next_renewal` come from GLEIF.
+- **A regulator gives filings and fiscal periods, so it gets a subtree.** A vendor or a news
+  feed gives opinions about relationships, so it stays on claim edges. Both name a `Source`.
 - **`Identifier (CIK)` and `Registrant` overlap on purpose.** The identifier is the identity
   record in the core. The registrant is the root of the adapter data.
+
+### 5.6 Company identity (lab addition)
+
+`company_id` is an id that we mint, such as `C-000007`. It carries no meaning and never changes.
+Everything the world uses to point at a company is an `Identifier` on that company.
+
+- **Find a company by a handle, never by the id.** `(scheme, value)` is unique, so a CIK or an
+  LEI leads to one company in one hop. A ticker leads to it through `LISTED_ON`. A name gives a
+  list of candidates, never one sure answer.
+- **Two records are the same company if they share a strong identifier:** an LEI, a CIK, or a
+  national register number. `check_identifier_one_company` finds an identifier on two companies.
+- **Mint once, remember forever.** `fixtures/company_ids.json` records which identifiers lead
+  to which id. A load asks this registry first and mints only for a company it does not know. So
+  a company keeps its id when the stores are created again, and when it gets a new identifier.
+- **A `Company` is one legal entity.** "The Apple" that people talk about is the top entity,
+  Apple Inc. Its other entities hang below it through `SUBSIDIARY_OF`.
+- **`primary` marks the preferred handle to show.** It no longer says where the key comes from.
+
+Why not arkad's rule, the LEI as key with the CIK as fallback: EDGAR gives no LEI, so all 100
+real companies start with a CIK key. 94 of them get an LEI from GLEIF, and each of those keys
+must then change. 11 of the 94 LEIs have lapsed.
+
+### 5.7 Node or property (lab addition)
+
+Make something a node if it has relationships of its own, or if a query passes through it. Make
+it a property if a query only filters by it.
+
+A shared label as a node becomes a hub. The calendar quarter `Q3-2024` had 88 edges with 100
+companies and one fiscal year. With all filers and ten years, it has tens of thousands. No query
+passes through it, and it hides every picture.
+
+| Was | Now | Why |
+| --- | --- | --- |
+| `Period` node, `ALIGNS_WITH` edge | `FiscalQuarter.calendar_quarter`, with an index | Only a filter. Calendar dates need no node |
+| `Regulator` node with an edge from each registrant | `Source` node with no edges, `source` property in each key | Only a filter. The node stays as a list of names and kinds |
+| `OF_FORM` edge | `Filing.form` property | Only a filter. `FormType` stays a node, because `REQUIRES` is real structure |
+| `Concept` node | unchanged | The set difference "required minus reported" passes through it. It is the next hub to watch |
+| `Exchange`, `Industry` nodes | unchanged | Queries pass through them: "who else is in this industry" |
+
+In Postgres each of these was a column already. The parts of the model that are shared labels
+are relational in shape. Only the company-to-company parts are graph-shaped (§5.4).

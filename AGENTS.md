@@ -61,6 +61,11 @@ If a command fails, fix the cause before you push. To apply the automatic fixes,
   `fixtures/README.md`, and the affected queries.
 - Never edit `fixtures/sp500.cypher` or `fixtures/sp500.sql` by hand. Change
   `scripts/generate_sp500_seed.py` and run it again.
+- Never change or reuse an id in `fixtures/company_ids.json`. A company keeps its id for good.
+- Keep the load order: reference data, the core, the adapters, the claims. `LOAD_ORDER` in
+  `scripts/load_stores.py` fixes the order of the files.
+- Make something a node if a query passes through it. Make it a property if a query only
+  filters by it. See `MODEL.md` §5.7.
 - If you add something that arkad's model does not have, note it at the top of `MODEL.md`.
 - Data-quality rules are queries in `queries/check_*`, not database constraints. The seed holds
   planted violations for them.

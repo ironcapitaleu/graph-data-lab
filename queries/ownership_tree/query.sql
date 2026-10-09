@@ -1,7 +1,7 @@
 -- Every company below Alpha in the SUBSIDIARY_OF tree, with its shortest depth.
 -- UNION removes repeated (company, depth) rows, and the depth cap stops a cycle.
 WITH RECURSIVE tree (company_id, depth) AS (
-    SELECT child_id, 1 FROM subsidiary_of WHERE parent_id = 'LEI:5493001ALPHAHOLD0020'
+    SELECT child_id, 1 FROM subsidiary_of WHERE parent_id = 'C-000001'
     UNION
     SELECT s.child_id, tree.depth + 1
     FROM tree

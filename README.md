@@ -34,7 +34,9 @@ fixtures/
   sp500.cypher      generated seed for Neo4j: 100 real S&P 500 companies from SEC EDGAR
   sp500.sql         the same seed for Postgres
   gleif_records.json  the GLEIF record per company, as fetched from the GLEIF API
+  company_ids.json  our id of each company and the identifiers that lead to it
 scripts/
+  load_stores.py          creates both stores from nothing, in a fixed order
   fetch_gleif.py          matches each S&P 500 company to its GLEIF record
   generate_sp500_seed.py  writes the two sp500 files and their expected rows
 queries/<name>/
@@ -42,8 +44,7 @@ queries/<name>/
   query.sql         the question in SQL
   expected.json     the rows both queries must return
 tests/
-  conftest.py       resets both stores, then loads the schema and the seed
-  repo_files.py     paths to the files above and a reader for them
+  conftest.py       loads both stores from nothing through scripts/load_stores.py
   test_queries.py   runs every query on both stores
   test_parity.py    checks that both seeds hold the same data
 pyproject.toml      dependencies and pytest settings, managed by uv
@@ -71,8 +72,17 @@ a dependency, run `uv add <package>` (or `uv add --dev <package>`) and commit `p
 Before you push, run the checks from the "Pre-Push Checks" section of `AGENTS.md`: format, lint,
 type checks, tests, and the vulnerability audit.
 
-The tests wipe both databases, then load the schema and the seed. Do not point them at a database
-you want to keep.
+The tests wipe both databases, then load the schema and the seeds. Do not point them at a
+database you want to keep.
+
+To create both stores from nothing without the tests, run:
+
+```sh
+uv run python -m scripts.load_stores
+```
+
+It loads `model/schema`, then `fixtures/seed`, then `fixtures/sp500`. The tests use the same
+function, so both ways give the same stores.
 
 To look at the graph, open the Neo4j Browser at <http://localhost:7474>. Log in as `neo4j` with
 password `graph-data-lab`, then run `MATCH (n) RETURN n`.
@@ -107,6 +117,6 @@ uv run python -m scripts.fetch_gleif --arkad ../arkad --edgar ../data
 
 - LEI check digits (ISO 17442) and GLEIF status for the identifier check.
 - The `REPORTS_CONCEPT` drift check against the adapter raw store.
-- Period arithmetic: a filing's `period_end` against the dates of the period it reports on.
+- A filing's `period_end` against the dates of the fiscal period it reports on.
 - Performance. The seed has 106 companies, so the timings mean nothing yet.
 - Fiscal years other than 2024, and amendments (`10-K/A`, `10-Q/A`).

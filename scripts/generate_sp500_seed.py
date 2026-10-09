@@ -26,6 +26,9 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "fixtures"
 QUERIES = ROOT / "queries"
 
+COMPANY_IDS = FIXTURES / "company_ids.json"
+"""Our company ids, each with the identifiers that lead to it. The generator adds new ones."""
+
 GLEIF_RECORDS = FIXTURES / "gleif_records.json"
 """The GLEIF records per CIK, written by `scripts/fetch_gleif.py`."""
 
@@ -39,7 +42,7 @@ YEAR_LENGTH = range(350, 381)
 QUARTER_LENGTH = range(75, 106)
 """Days in a fiscal quarter of 12 to 14 weeks, with some room."""
 
-SOURCE = "SEC-EDGAR"
+SOURCE = "SEC"
 VERIFIABILITY = "Verified"
 
 ARKAD_CIK_FILE = "sec/tests/pipeline_coverage/constants.rs"
@@ -150,7 +153,7 @@ class FiscalQuarter:
     filing: Filing | None
 
     @property
-    def period_key(self) -> str:
+    def calendar_quarter(self) -> str:
         """Returns the key of the calendar quarter that holds the middle day of the quarter."""
         start = date.fromisoformat(self.start_date)
         middle = start + (date.fromisoformat(self.end_date) - start) / 2
@@ -179,6 +182,7 @@ class Company:
     """An SEC filer with the data the seed holds for it.
 
     Attributes:
+        company_id: Our own id of the company, from `fixtures/company_ids.json`.
         cik: The CIK, padded with zeros to 10 digits.
         name: The registered name in EDGAR.
         country: The ISO 3166 alpha-2 code of the business address.
@@ -192,6 +196,7 @@ class Company:
             if no record or more than one record passed the match.
     """
 
+    company_id: str
     cik: str
     name: str
     country: str
@@ -201,11 +206,6 @@ class Company:
     fiscal_year: FiscalYear | None
     unresolved_filings: tuple[Filing, ...]
     gleif: dict[str, Any] | None
-
-    @property
-    def company_id(self) -> str:
-        """Returns the company id. EDGAR gives no LEI, so the CIK is the fallback."""
-        return f"CIK:{self.cik}"
 
     @property
     def resolved_filings(self) -> list[tuple[Filing, int | None]]:
@@ -229,7 +229,11 @@ def main() -> None:
     """Reads the sources, then writes both seed files and the expected rows."""
     args = parse_args()
     gleif_records = json.loads(GLEIF_RECORDS.read_text())["matched"]
-    companies = [read_company(cik, args.edgar, gleif_records) for cik in select_ciks(args.arkad)]
+    company_ids: dict[str, list[str]] = json.loads(COMPANY_IDS.read_text())
+    companies = [
+        read_company(cik, args.edgar, gleif_records, company_ids) for cik in select_ciks(args.arkad)
+    ]
+    COMPANY_IDS.write_text(json.dumps(company_ids, indent=2, sort_keys=True) + "\n")
     (FIXTURES / "sp500.cypher").write_text(cypher_seed(companies, args.as_of))
     (FIXTURES / "sp500.sql").write_text(sql_seed(companies, args.as_of))
     write_expected_rows(companies)
@@ -267,8 +271,37 @@ def select_ciks(arkad: Path) -> list[str]:
     return [*ALWAYS_INCLUDED, *sample]
 
 
-def read_company(cik: str, edgar: Path, gleif_records: dict[str, dict[str, Any]]) -> Company:
+def company_id_for(identifiers: list[str], company_ids: dict[str, list[str]]) -> str:
+    """Returns our id of the company that holds one of the identifiers, and mints one if none does.
+
+    The id carries no meaning and never changes. A company keeps its id when it gets a new
+    identifier, so the function adds the identifiers it did not know to the registry.
+    """
+    known = {
+        company_id
+        for company_id, known_identifiers in company_ids.items()
+        if set(identifiers) & set(known_identifiers)
+    }
+    if len(known) > 1:
+        raise ValueError(f"The identifiers {identifiers} belong to several companies: {known}")
+    if known:
+        company_id = known.pop()
+    else:
+        highest = max(int(company_id.removeprefix("C-")) for company_id in company_ids)
+        company_id = f"C-{highest + 1:06d}"
+    company_ids[company_id] = sorted(set(company_ids.get(company_id, [])) | set(identifiers))
+    return company_id
+
+
+def read_company(
+    cik: str,
+    edgar: Path,
+    gleif_records: dict[str, dict[str, Any]],
+    company_ids: dict[str, list[str]],
+) -> Company:
     padded_cik = cik.zfill(10)
+    gleif = gleif_records.get(padded_cik)
+    identifiers = [f"CIK:{padded_cik}"] + ([f"LEI:{gleif['lei']}"] if gleif else [])
     submissions = json.loads((edgar / "submissions" / f"CIK{padded_cik}.json").read_text())
     facts = json.loads((edgar / "companyfacts" / f"CIK{padded_cik}.json").read_text())
     filings = read_filings(submissions, facts, edgar)
@@ -284,6 +317,7 @@ def read_company(cik: str, edgar: Path, gleif_records: dict[str, dict[str, Any]]
         key=lambda listing: (listing.mic, listing.ticker),
     )
     return Company(
+        company_id=company_id_for(identifiers, company_ids),
         cik=padded_cik,
         name=submissions["name"],
         country=country(submissions),
@@ -292,7 +326,7 @@ def read_company(cik: str, edgar: Path, gleif_records: dict[str, dict[str, Any]]
         listings=tuple(listings),
         fiscal_year=fiscal_year,
         unresolved_filings=tuple(unresolved_filings(filings, fiscal_year)),
-        gleif=gleif_records.get(padded_cik),
+        gleif=gleif,
     )
 
 
@@ -486,96 +520,79 @@ def cypher_seed(companies: list[Company], as_of: date) -> str:
         f"verifiability: '{VERIFIABILITY}'"
     )
     with_year = [(company, company.fiscal_year) for company in companies if company.fiscal_year]
+    with_lei = [(company, company.gleif) for company in companies if company.gleif]
     filing_create = (
-        "CREATE (f:Filing {regulator: 'SEC', native_id: row.id, form: row.form,\n"
+        "CREATE (f:Filing {source: 'SEC', native_id: row.id, form: row.form,\n"
         "                  filed_date: date(row.filed), period_end: date(row.end)})\n"
         "CREATE (g)-[:HAS_FILING]->(f)\n"
-        "CREATE (f)-[:OF_FORM]->(t)\n"
     )
     statements = [
-        "// S&P 500 seed. Real data from SEC EDGAR. fixtures/sp500.sql holds the same data.\n"
-        "// Generated by scripts/generate_sp500_seed.py. Do not edit this file by hand.\n"
-        "// Load fixtures/seed.cypher first: it creates the regulator, concepts, and form types.\n",
-        "// Ring 1: companies and identifiers\n"
+        "// S&P 500 seed. Real data from SEC EDGAR and GLEIF. fixtures/sp500.sql holds the same\n"
+        "// data. Generated by scripts/generate_sp500_seed.py. Do not edit this file by hand.\n"
+        "// Load fixtures/seed.cypher first: it creates the sources, concepts, and form types.\n"
+        "// The statements stand in load order: the core, the SEC adapter, the GLEIF adapter,\n"
+        "// the claims.\n",
+        "// 1. Ring 1: companies and identifiers\n"
         + cypher_rows(
             [
-                {
-                    "id": company.company_id,
-                    "name": company.name,
-                    "country": company.country,
-                    "cik": company.cik,
-                    "first": company.first_filed,
-                }
+                {"id": company.company_id, "name": company.name, "country": company.country}
                 for company in companies
             ]
         )
-        + "CREATE (c:Company {company_id: row.id, name: row.name, country: row.country,"
-        " status: 'active'})\n"
+        + "CREATE (:Company {company_id: row.id, name: row.name, country: row.country,"
+        " status: 'active'});\n",
+        cypher_rows(
+            [
+                {"company": company.company_id, "cik": company.cik, "since": company.first_filed}
+                for company in companies
+            ]
+        )
+        + "MATCH (c:Company {company_id: row.company})\n"
         "CREATE (i:Identifier {scheme: 'CIK', value: row.cik})\n"
-        "CREATE (c)-[:HAS_IDENTIFIER {since: date(row.first), status: 'active',"
+        "CREATE (c)-[:HAS_IDENTIFIER {since: date(row.since), status: 'active',"
         " primary: true}]->(i);\n",
-        "// SEC adapter: registrants\n"
+        cypher_rows(
+            [
+                {
+                    "company": company.company_id,
+                    "lei": gleif["lei"],
+                    "since": gleif["initial_registration"],
+                    "status": lei_status(gleif),
+                }
+                for company, gleif in with_lei
+            ]
+        )
+        + "MATCH (c:Company {company_id: row.company})\n"
+        "CREATE (i:Identifier {scheme: 'LEI', value: row.lei})\n"
+        "CREATE (c)-[:HAS_IDENTIFIER {since: date(row.since), status: row.status,"
+        " primary: false}]->(i);\n",
+        "// 2. SEC adapter: registrants. `name` is the caption in the Neo4j Browser.\n"
         + cypher_rows(
             [
                 {
                     "company": company.company_id,
                     "cik": company.cik,
                     "name": company.name,
-                    "first": company.first_filed,
+                    "since": company.first_filed,
                 }
                 for company in companies
             ]
         )
-        + "MATCH (c:Company {company_id: row.company}), (r:Regulator {code: 'SEC'})\n"
-        "CREATE (g:Registrant {regulator: 'SEC', native_id: row.cik, name: row.name})\n"
-        "CREATE (c)-[:REGISTERED_AS]->(g)\n"
-        "CREATE (g)-[:FILES_WITH {first_filed: date(row.first)}]->(r);\n",
-        "// GLEIF adapter: the LEI and the registration record of each matched company\n"
-        + cypher_rows(
-            [
-                {
-                    "company": company.company_id,
-                    "lei": company.gleif["lei"],
-                    "name": company.gleif["legal_name"],
-                    "jurisdiction": company.gleif["jurisdiction"],
-                    "registration": company.gleif["registration_status"],
-                    "status": lei_status(company.gleif),
-                    "first": company.gleif["initial_registration"],
-                    "renewal": company.gleif["next_renewal"],
-                }
-                for company in companies
-                if company.gleif
-            ]
-        )
-        + "MATCH (c:Company {company_id: row.company}), (r:Regulator {code: 'GLEIF'})\n"
-        "CREATE (i:Identifier {scheme: 'LEI', value: row.lei})\n"
-        "CREATE (c)-[:HAS_IDENTIFIER {since: date(row.first), status: row.status,"
-        " primary: false}]->(i)\n"
-        "CREATE (g:Registrant {regulator: 'GLEIF', native_id: row.lei, name: row.name,\n"
-        "  jurisdiction: row.jurisdiction, status: row.registration,"
-        " next_renewal: date(row.renewal)})\n"
-        "CREATE (c)-[:REGISTERED_AS]->(g)\n"
-        "CREATE (g)-[:FILES_WITH {first_filed: date(row.first)}]->(r);\n",
-        "// SEC adapter: fiscal years and quarters. `name` is the caption in the Neo4j Browser.\n"
+        + "MATCH (c:Company {company_id: row.company})\n"
+        "CREATE (g:Registrant {source: 'SEC', native_id: row.cik, name: 'SEC',\n"
+        "  registered_name: row.name})\n"
+        "CREATE (c)-[:REGISTERED_WITH {since: date(row.since)}]->(g);\n",
+        "// SEC adapter: fiscal years and quarters\n"
         + cypher_rows(
             [
                 {"cik": company.cik, "start": year.start_date, "end": year.end_date}
                 for company, year in with_year
             ]
         )
-        + "MATCH (g:Registrant {regulator: 'SEC', native_id: row.cik})\n"
-        "CREATE (g)-[:HAS_FISCAL_YEAR]->(:FiscalYear {regulator: 'SEC', registrant: row.cik,\n"
+        + "MATCH (g:Registrant {source: 'SEC', native_id: row.cik})\n"
+        "CREATE (g)-[:HAS_FISCAL_YEAR]->(:FiscalYear {source: 'SEC', registrant: row.cik,\n"
         f"  fiscal_year: {FISCAL_YEAR}, start_date: date(row.start), end_date: date(row.end),\n"
         f"  name: 'FY{FISCAL_YEAR}'}});\n",
-        cypher_rows(
-            [
-                {"key": key, "start": start, "end": end}
-                for key, start, end in calendar_quarters(companies)
-            ]
-        )
-        + "MERGE (p:Period {key: row.key})\n"
-        "ON CREATE SET p.kind = 'quarter', p.start_date = date(row.start),"
-        " p.end_date = date(row.end);\n",
         cypher_rows(
             [
                 {
@@ -583,19 +600,17 @@ def cypher_seed(companies: list[Company], as_of: date) -> str:
                     "quarter": str(quarter.quarter),
                     "start": quarter.start_date,
                     "end": quarter.end_date,
-                    "period": quarter.period_key,
+                    "calendar": quarter.calendar_quarter,
                 }
                 for company, year in with_year
                 for quarter in year.quarters
             ]
         )
-        + "MATCH (y:FiscalYear {regulator: 'SEC', registrant: row.cik,"
-        f" fiscal_year: {FISCAL_YEAR}}}),\n"
-        "      (p:Period {key: row.period})\n"
-        "CREATE (y)-[:HAS_QUARTER]->(q:FiscalQuarter {regulator: 'SEC', registrant: row.cik,\n"
+        + f"MATCH (y:FiscalYear {{source: 'SEC', registrant: row.cik, fiscal_year: {FISCAL_YEAR}}})\n"
+        "CREATE (y)-[:HAS_QUARTER]->(:FiscalQuarter {source: 'SEC', registrant: row.cik,\n"
         f"  fiscal_year: {FISCAL_YEAR}, quarter: toInteger(row.quarter),\n"
-        "  start_date: date(row.start), end_date: date(row.end), name: 'Q' + row.quarter})\n"
-        "CREATE (q)-[:ALIGNS_WITH]->(p);\n",
+        "  start_date: date(row.start), end_date: date(row.end),\n"
+        "  calendar_quarter: row.calendar, name: 'Q' + row.quarter});\n",
         "// SEC adapter: filings. A 10-K reports on the fiscal year, a 10-Q on a quarter.\n"
         + cypher_rows(
             [
@@ -605,9 +620,8 @@ def cypher_seed(companies: list[Company], as_of: date) -> str:
                 if quarter is None
             ]
         )
-        + "MATCH (g:Registrant {regulator: 'SEC', native_id: row.cik}),\n"
-        "      (t:FormType {regulator: 'SEC', code: row.form}),\n"
-        f"      (y:FiscalYear {{regulator: 'SEC', registrant: row.cik, fiscal_year: {FISCAL_YEAR}}})\n"
+        + "MATCH (g:Registrant {source: 'SEC', native_id: row.cik}),\n"
+        f"      (y:FiscalYear {{source: 'SEC', registrant: row.cik, fiscal_year: {FISCAL_YEAR}}})\n"
         + filing_create
         + "CREATE (f)-[:REPORTS_ON]->(y);\n",
         cypher_rows(
@@ -618,9 +632,8 @@ def cypher_seed(companies: list[Company], as_of: date) -> str:
                 if quarter is not None
             ]
         )
-        + "MATCH (g:Registrant {regulator: 'SEC', native_id: row.cik}),\n"
-        "      (t:FormType {regulator: 'SEC', code: row.form}),\n"
-        "      (q:FiscalQuarter {regulator: 'SEC', registrant: row.cik,"
+        + "MATCH (g:Registrant {source: 'SEC', native_id: row.cik}),\n"
+        "      (q:FiscalQuarter {source: 'SEC', registrant: row.cik,"
         f" fiscal_year: {FISCAL_YEAR},\n"
         "                        quarter: toInteger(row.quarter)})\n"
         + filing_create
@@ -633,8 +646,7 @@ def cypher_seed(companies: list[Company], as_of: date) -> str:
                 for filing in company.unresolved_filings
             ]
         )
-        + "MATCH (g:Registrant {regulator: 'SEC', native_id: row.cik}),\n"
-        "      (t:FormType {regulator: 'SEC', code: row.form})\n"
+        + "MATCH (g:Registrant {source: 'SEC', native_id: row.cik})\n"
         + filing_create.rstrip("\n")
         + ";\n",
         cypher_rows(
@@ -645,10 +657,29 @@ def cypher_seed(companies: list[Company], as_of: date) -> str:
                 for concept, confidence in filing.concepts.items()
             ]
         )
-        + "MATCH (f:Filing {regulator: 'SEC', native_id: row.id}),"
-        " (k:Concept {element: row.element})\n"
+        + "MATCH (f:Filing {source: 'SEC', native_id: row.id}), (k:Concept {element: row.element})\n"
         "CREATE (f)-[:REPORTS_CONCEPT {confidence: row.confidence}]->(k);\n",
-        "// Claim layer\n"
+        "// 3. GLEIF adapter: the registration record of each matched company\n"
+        + cypher_rows(
+            [
+                {
+                    "company": company.company_id,
+                    "lei": gleif["lei"],
+                    "name": gleif["legal_name"],
+                    "jurisdiction": gleif["jurisdiction"],
+                    "status": gleif["registration_status"],
+                    "since": gleif["initial_registration"],
+                    "renewal": gleif["next_renewal"],
+                }
+                for company, gleif in with_lei
+            ]
+        )
+        + "MATCH (c:Company {company_id: row.company})\n"
+        "CREATE (g:Registrant {source: 'GLEIF', native_id: row.lei, name: 'GLEIF',\n"
+        "  registered_name: row.name, jurisdiction: row.jurisdiction, status: row.status,\n"
+        "  next_renewal: date(row.renewal)})\n"
+        "CREATE (c)-[:REGISTERED_WITH {since: date(row.since)}]->(g);\n",
+        "// 4. Claim layer\n"
         + cypher_rows([{"mic": mic, "name": name} for mic, name in exchanges(companies)])
         + "MERGE (e:Exchange {mic: row.mic})\nON CREATE SET e.name = row.name;\n",
         cypher_rows([{"code": code, "name": name} for code, name in industries(companies)])
@@ -701,6 +732,7 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
     envelope = (SOURCE, str(as_of), str(as_of), VERIFIABILITY)
     year = str(FISCAL_YEAR)
     with_year = [(company, company.fiscal_year) for company in companies if company.fiscal_year]
+    with_lei = [(company, company.gleif) for company in companies if company.gleif]
     filing_rows: list[tuple[str | None, ...]] = [
         (
             "SEC",
@@ -730,10 +762,12 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
         for filing in company.unresolved_filings
     ]
     statements = [
-        "-- S&P 500 seed. Real data from SEC EDGAR. fixtures/sp500.cypher holds the same data.\n"
-        "-- Generated by scripts/generate_sp500_seed.py. Do not edit this file by hand.\n"
-        "-- Load fixtures/seed.sql first: it creates the regulator, concepts, and form types.\n",
-        "-- Ring 1: companies and identifiers\n"
+        "-- S&P 500 seed. Real data from SEC EDGAR and GLEIF. fixtures/sp500.cypher holds the same\n"
+        "-- data. Generated by scripts/generate_sp500_seed.py. Do not edit this file by hand.\n"
+        "-- Load fixtures/seed.sql first: it creates the sources, concepts, and form types.\n"
+        "-- The statements stand in load order: the core, the SEC adapter, the GLEIF adapter,\n"
+        "-- the claims.\n",
+        "-- 1. Ring 1: companies and identifiers\n"
         + sql_insert(
             "company",
             "company_id, name, country, status",
@@ -746,7 +780,7 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
             "identifier",
             "scheme, value",
             [("CIK", company.cik) for company in companies]
-            + [("LEI", company.gleif["lei"]) for company in companies if company.gleif],
+            + [("LEI", gleif["lei"]) for _, gleif in with_lei],
         ),
         sql_insert(
             "has_identifier",
@@ -759,62 +793,35 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
                 (
                     company.company_id,
                     "LEI",
-                    company.gleif["lei"],
-                    company.gleif["initial_registration"],
-                    lei_status(company.gleif),
+                    gleif["lei"],
+                    gleif["initial_registration"],
+                    lei_status(gleif),
                     "false",
                 )
-                for company in companies
-                if company.gleif
+                for company, gleif in with_lei
             ],
         ),
-        "-- SEC adapter: registrants\n"
+        "-- 2. SEC adapter: registrants\n"
         + sql_insert(
             "registrant",
-            "regulator, native_id, company_id, name, first_filed",
+            "source, native_id, company_id, registered_name, since",
             [
                 ("SEC", company.cik, company.company_id, company.name, company.first_filed)
                 for company in companies
             ],
         ),
-        "-- GLEIF adapter: the registration record of each matched company\n"
-        + sql_insert(
-            "registrant",
-            "regulator, native_id, company_id, name, first_filed, jurisdiction, status,"
-            " next_renewal",
-            [
-                (
-                    "GLEIF",
-                    company.gleif["lei"],
-                    company.company_id,
-                    company.gleif["legal_name"],
-                    company.gleif["initial_registration"],
-                    company.gleif["jurisdiction"],
-                    company.gleif["registration_status"],
-                    company.gleif["next_renewal"],
-                )
-                for company in companies
-                if company.gleif
-            ],
-        ),
         "-- SEC adapter: fiscal years and quarters\n"
         + sql_insert(
             "fiscal_year",
-            "regulator, registrant, fiscal_year, start_date, end_date",
+            "source, registrant, fiscal_year, start_date, end_date",
             [
                 ("SEC", company.cik, year, fiscal_year.start_date, fiscal_year.end_date)
                 for company, fiscal_year in with_year
             ],
         ),
         sql_insert(
-            "period",
-            "key, kind, start_date, end_date",
-            [(key, "quarter", start, end) for key, start, end in calendar_quarters(companies)],
-            " ON CONFLICT DO NOTHING",
-        ),
-        sql_insert(
             "fiscal_quarter",
-            "regulator, registrant, fiscal_year, quarter, start_date, end_date, period_key",
+            "source, registrant, fiscal_year, quarter, start_date, end_date, calendar_quarter",
             [
                 (
                     "SEC",
@@ -823,7 +830,7 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
                     str(quarter.quarter),
                     quarter.start_date,
                     quarter.end_date,
-                    quarter.period_key,
+                    quarter.calendar_quarter,
                 )
                 for company, fiscal_year in with_year
                 for quarter in fiscal_year.quarters
@@ -833,12 +840,12 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
         "-- period than its dates say.\n"
         + sql_insert(
             "filing",
-            "regulator, native_id, registrant, form, filed_date, period_end, fiscal_year, quarter",
+            "source, native_id, registrant, form, filed_date, period_end, fiscal_year, quarter",
             filing_rows,
         ),
         sql_insert(
             "reports_concept",
-            "regulator, native_id, element, confidence",
+            "source, native_id, element, confidence",
             [
                 ("SEC", filing.accession, concept, confidence)
                 for company in companies
@@ -846,7 +853,26 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
                 for concept, confidence in filing.concepts.items()
             ],
         ),
-        "-- Claim layer\n"
+        "-- 3. GLEIF adapter: the registration record of each matched company\n"
+        + sql_insert(
+            "registrant",
+            "source, native_id, company_id, registered_name, since, jurisdiction, status,"
+            " next_renewal",
+            [
+                (
+                    "GLEIF",
+                    gleif["lei"],
+                    company.company_id,
+                    gleif["legal_name"],
+                    gleif["initial_registration"],
+                    gleif["jurisdiction"],
+                    gleif["registration_status"],
+                    gleif["next_renewal"],
+                )
+                for company, gleif in with_lei
+            ],
+        ),
+        "-- 4. Claim layer\n"
         + sql_insert("exchange", "mic, name", exchanges(companies), " ON CONFLICT DO NOTHING"),
         sql_insert(
             "industry",
@@ -870,23 +896,6 @@ def sql_seed(companies: list[Company], as_of: date) -> str:
         ),
     ]
     return "\n".join(statements)
-
-
-def calendar_quarters(companies: list[Company]) -> list[tuple[str, str, str]]:
-    """Returns key, start, and end of each calendar quarter that a fiscal quarter aligns with."""
-    keys = {
-        quarter.period_key
-        for company in companies
-        if company.fiscal_year
-        for quarter in company.fiscal_year.quarters
-    }
-    quarters = []
-    for key in sorted(keys, key=lambda key: (key[3:], key[:2])):
-        number, year = int(key[1]), int(key[3:])
-        start = date(year, 3 * number - 2, 1)
-        end = date(year + number // 4, 3 * number % 12 + 1, 1) - timedelta(days=1)
-        quarters.append((key, str(start), str(end)))
-    return quarters
 
 
 def exchanges(companies: list[Company]) -> list[tuple[str, str]]:

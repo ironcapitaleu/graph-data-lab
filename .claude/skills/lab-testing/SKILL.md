@@ -19,7 +19,7 @@ Adapted from the arkad `testing` skill. The Rust-specific parts are removed.
 ## How the Tests Work
 
 - `tests/conftest.py` wipes both databases, then loads `model/schema.*`, `fixtures/seed.*`, and
-  `fixtures/sp500.*`.
+  `fixtures/sp500.*` through `scripts/load_stores.py`.
 - `tests/test_queries.py` runs each `queries/<name>/query.cypher` on Neo4j and each `query.sql` on
   Postgres. Both results must equal `expected.json`. Row order does not count.
 - `tests/test_parity.py` compares node and edge counts between the two seeds.

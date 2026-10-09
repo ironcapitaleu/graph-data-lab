@@ -1,1 +1,3 @@
-[{"owner_id": "CIK:0000000003", "owned_id": "LEI:5493004DELTAGMBH0018", "source": "GLEIF-L2"}]
+[
+  {"owner_id": "C-000003", "owned_id": "C-000004", "source": "GLEIF"}
+]
