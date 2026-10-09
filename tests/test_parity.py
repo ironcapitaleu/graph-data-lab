@@ -1,10 +1,17 @@
-"""Check that seed.cypher and seed.sql load the same data, by comparing counts."""
+"""Check that seed.cypher and seed.sql load the same data, by comparing counts.
 
+External dependencies: Neo4j and Postgres from `docker-compose.yml`.
+"""
+
+from typing import LiteralString
+
+import psycopg
 import pytest
+from neo4j import Session
 
 # Each pair counts the same thing in both stores. FILED_UNDER and OF_FORM are columns of
 # `filing` in SQL, so they count as filings.
-COUNTS = [
+COUNTS: list[tuple[LiteralString, LiteralString]] = [
     ("MATCH (n:Company) RETURN count(n)", "SELECT count(*) FROM company"),
     ("MATCH (n:Identifier) RETURN count(n)", "SELECT count(*) FROM identifier"),
     ("MATCH (n:Concept) RETURN count(n)", "SELECT count(*) FROM concept"),
@@ -30,9 +37,14 @@ COUNTS = [
 
 
 @pytest.mark.parametrize(("cypher", "sql"), COUNTS, ids=[cypher.split()[1] for cypher, _ in COUNTS])
-def test_same_count_in_both_stores(cypher, sql, neo4j_session, postgres_connection):
-    expected_count = postgres_connection.execute(sql).fetchone()[0]
+def test_should_hold_the_same_count_for_both_stores(
+    cypher: LiteralString,
+    sql: LiteralString,
+    neo4j_session: Session,
+    postgres_connection: psycopg.Connection,
+) -> None:
+    expected_result = postgres_connection.execute(sql).fetchall()[0][0]
 
-    count = neo4j_session.run(cypher).single()[0]
+    result = neo4j_session.run(cypher).single(strict=True)[0]
 
-    assert count == expected_count
+    assert result == expected_result

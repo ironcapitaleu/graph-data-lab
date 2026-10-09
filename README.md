@@ -36,16 +36,22 @@ queries/<name>/
   query.sql         the question in SQL
   expected.json     the rows both queries must return
 tests/
+  conftest.py       resets both stores, then loads the schema and the seed
+  repo_files.py     paths to the files above and a reader for them
   test_queries.py   runs every query on both stores
   test_parity.py    checks that both seeds hold the same data
+pyproject.toml      dependencies and pytest settings, managed by uv
+ruff.toml           format and lint settings
 AGENTS.md           rules for agents working in the lab
+DOCUMENTATION.md    rules for Python docstrings
 .claude/skills/     agent skills: lab-testing, performance, plain-english,
                     xbrl-accounting, handoff
 ```
 
 ## Run it
 
-You need Docker and [uv](https://docs.astral.sh/uv/). uv installs the Python version from `.python-version` if you lack it.
+You need Docker and [uv](https://docs.astral.sh/uv/). uv installs the Python version from
+`.python-version` if you lack it.
 
 ```sh
 docker compose up -d --wait
@@ -55,6 +61,9 @@ uv run pytest
 `uv run` creates `.venv` and installs the locked dependencies from `uv.lock` on first use. To add
 a dependency, run `uv add <package>` (or `uv add --dev <package>`) and commit `pyproject.toml` and
 `uv.lock`.
+
+Before you push, run the checks from the "Pre-Push Checks" section of `AGENTS.md`: format, lint,
+type checks, tests, and the vulnerability audit.
 
 The tests wipe both databases, then load the schema and the seed. Do not point them at a database
 you want to keep.

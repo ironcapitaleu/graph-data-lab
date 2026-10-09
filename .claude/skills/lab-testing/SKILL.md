@@ -35,7 +35,8 @@ Adapted from the arkad `testing` skill. The Rust-specific parts are removed.
 4. Write `query.cypher` and `query.sql`. Use the same column names. Return dates as text
    (`toString(...)`, `::text`) and avoid floats, so the two drivers return equal values.
 5. Write `expected.json` by hand from the seed. Never copy it from a query result.
-6. Run `uv run pytest`.
+6. Run `uv run pytest`. If you changed a file in `tests/`, run all pre-push checks from
+   `AGENTS.md`.
 7. Prove that the test can fail: change `expected.json` once, run the tests, see both go red, then
    restore it.
 

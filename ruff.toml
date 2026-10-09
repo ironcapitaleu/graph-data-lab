@@ -1,0 +1,32 @@
+# No `target-version` here: Ruff reads `requires-python` from pyproject.toml.
+
+line-length = 100
+
+[lint]
+select = [
+    "E",  # pycodestyle errors - pep8 style check
+    "W",  # pycodestyle warnings - pep8 style check
+    "F",  # pyflakes - only errors, no style check
+    "I",  # isort - import order
+    "S",  # flake8-bandit - static security check
+    "C4", # flake8-comprehensions - checks list/set/dict comprehensions
+    "B",  # flake8-bugbear - checks common bugs
+    "D",  # pydocstyle - docstring presence and structure, see DOCUMENTATION.md
+]
+ignore = [
+    "E501", # line too long, handled by `ruff format`
+    "D105", # magic methods need no docstring
+    "D107", # the class docstring documents `__init__`
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.per-file-ignores]
+"tests/**" = [
+    "S101", # use of "assert" flagged by bandit, needed for tests
+    "D101", # fakes need no docstring
+    "D102",
+    "D103", # the test name states the property
+    "D104",
+]
