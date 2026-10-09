@@ -12,8 +12,8 @@ the same expected rows:
 
 | Query | Question | Shape |
 | --- | --- | --- |
-| `missing_q3_2024` | Which SEC filers have no Q3-2024 report? | anti-join |
-| `incomplete_fy2024` | Which SEC filers miss any FY2024 report? | anti-join |
+| `missing_q3_2024` | Which SEC registrants have no report for the third quarter of fiscal 2024? | anti-join |
+| `incomplete_fy2024` | Which SEC registrants miss any report of fiscal 2024? | anti-join |
 | `filing_missing_concepts` | Which required concepts did a filing not report? | set difference |
 | `ultimate_parent` | What is the top parent of each subsidiary? | multi-hop traversal |
 | `ownership_tree` | Which companies sit below Alpha, and how deep? | multi-hop traversal |
@@ -98,7 +98,6 @@ uv run python scripts/generate_sp500_seed.py --arkad ../arkad --edgar ../data
 
 - LEI check digits (ISO 17442) and GLEIF status for the identifier check.
 - The `REPORTS_CONCEPT` drift check against the adapter raw store.
-- Period arithmetic: a filing's `period_end` against its period's dates.
+- Period arithmetic: a filing's `period_end` against the dates of the period it reports on.
 - Performance. The seed has 106 companies, so the timings mean nothing yet.
-- Fiscal periods. A `Period` is a calendar period, so a company with another fiscal year looks
-  incomplete. See `fixtures/README.md`.
+- Fiscal years other than 2024, and amendments (`10-K/A`, `10-Q/A`).

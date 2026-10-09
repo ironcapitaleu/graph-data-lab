@@ -42,8 +42,7 @@ INSERT INTO period (key, kind, start_date, end_date) VALUES
     ('Q1-2024', 'quarter',     '2024-01-01', '2024-03-31'),
     ('Q2-2024', 'quarter',     '2024-04-01', '2024-06-30'),
     ('Q3-2024', 'quarter',     '2024-07-01', '2024-09-30'),
-    ('Q4-2024', 'quarter',     '2024-10-01', '2024-12-31'),
-    ('FY2024',  'fiscal_year', '2024-01-01', '2024-12-31');
+    ('Q4-2024', 'quarter',     '2024-10-01', '2024-12-31');
 
 -- SEC adapter
 INSERT INTO regulator (code, name) VALUES
@@ -57,35 +56,52 @@ INSERT INTO requires (regulator, form, element)
 SELECT t.regulator, t.code, k.element
 FROM form_type t CROSS JOIN concept k;
 
-INSERT INTO files_with (company_id, regulator, first_filed) VALUES
-    ('LEI:5493001ALPHAHOLD0020', 'SEC', '2010-03-01'),
-    ('LEI:5493002BETACORP00097', 'SEC', '2012-05-01'),
-    ('CIK:0000000003',           'SEC', '2018-08-01');
+-- Registrants: the companies as the SEC knows them. The core company delegates to the adapter here.
+INSERT INTO registrant (regulator, native_id, company_id, name, first_filed) VALUES
+    ('SEC', '0000000001', 'LEI:5493001ALPHAHOLD0020', 'Alpha Holdings Inc', '2010-03-01'),
+    ('SEC', '0000000002', 'LEI:5493002BETACORP00097', 'Beta Corp',          '2012-05-01'),
+    ('SEC', '0000000003', 'CIK:0000000003',           'Gamma Ltd',          '2018-08-01');
 
-CREATE TEMP TABLE seed_filing (company_id text, native_id text, form text, period_key text, filed_date date);
-INSERT INTO seed_filing VALUES
-    ('LEI:5493001ALPHAHOLD0020', '0000000001-24-000001', '10-Q', 'Q1-2024', '2024-05-01'),
-    ('LEI:5493001ALPHAHOLD0020', '0000000001-24-000002', '10-Q', 'Q2-2024', '2024-08-01'),
-    ('LEI:5493001ALPHAHOLD0020', '0000000001-24-000003', '10-Q', 'Q3-2024', '2024-11-01'),
-    ('LEI:5493001ALPHAHOLD0020', '0000000001-25-000001', '10-K', 'FY2024',  '2025-02-20'),
-    ('LEI:5493002BETACORP00097', '0000000002-24-000001', '10-Q', 'Q1-2024', '2024-05-02'),
-    ('LEI:5493002BETACORP00097', '0000000002-24-000002', '10-Q', 'Q2-2024', '2024-08-02'),
-    ('LEI:5493002BETACORP00097', '0000000002-25-000001', '10-K', 'FY2024',  '2025-02-21'),
-    ('CIK:0000000003',           '0000000003-24-000001', '10-Q', 'Q1-2024', '2024-05-03'),
-    ('CIK:0000000003',           '0000000003-24-000002', '10-Q', 'Q2-2024', '2024-08-03'),
-    ('CIK:0000000003',           '0000000003-24-000003', '10-Q', 'Q3-2024', '2024-11-03');
+-- Fiscal year 2024 of each registrant is the calendar year.
+INSERT INTO fiscal_year (regulator, registrant, fiscal_year, start_date, end_date)
+SELECT regulator, native_id, 2024, '2024-01-01', '2024-12-31' FROM registrant;
 
-INSERT INTO filing (regulator, native_id, form, filed_date, period_end)
-SELECT 'SEC', s.native_id, s.form, s.filed_date, p.end_date
-FROM seed_filing s JOIN period p ON p.key = s.period_key;
+INSERT INTO fiscal_quarter (regulator, registrant, fiscal_year, quarter, start_date, end_date, period_key)
+SELECT y.regulator, y.registrant, y.fiscal_year, q.quarter, q.start_date, q.end_date,
+       'Q' || q.quarter || '-2024'
+FROM fiscal_year y
+CROSS JOIN (VALUES
+    (1, DATE '2024-01-01', DATE '2024-03-31'),
+    (2, DATE '2024-04-01', DATE '2024-06-30'),
+    (3, DATE '2024-07-01', DATE '2024-09-30'),
+    (4, DATE '2024-10-01', DATE '2024-12-31')
+) AS q (quarter, start_date, end_date);
 
-INSERT INTO has_filing (company_id, regulator, native_id)
-SELECT company_id, 'SEC', native_id FROM seed_filing;
+-- Gamma's third quarter starts one day late: a planted gap after the second quarter.
+UPDATE fiscal_quarter SET start_date = '2024-07-02'
+WHERE registrant = '0000000003' AND fiscal_year = 2024 AND quarter = 3;
 
-INSERT INTO covers_period (regulator, native_id, period_key)
-SELECT 'SEC', native_id, period_key FROM seed_filing;
-
-DROP TABLE seed_filing;
+-- Filings. A 10-K reports on the fiscal year, a 10-Q on a quarter.
+-- Beta has no 10-Q for the third quarter. Gamma has no 10-K.
+INSERT INTO filing (regulator, native_id, registrant, form, filed_date, period_end, fiscal_year, quarter)
+SELECT 'SEC', s.native_id, s.registrant, s.form, s.filed_date,
+       coalesce(q.end_date, y.end_date), y.fiscal_year, s.quarter
+FROM (VALUES
+    ('0000000001', '0000000001-24-000001', '10-Q', 1,    DATE '2024-05-01'),
+    ('0000000001', '0000000001-24-000002', '10-Q', 2,    DATE '2024-08-01'),
+    ('0000000001', '0000000001-24-000003', '10-Q', 3,    DATE '2024-11-01'),
+    ('0000000001', '0000000001-25-000001', '10-K', NULL, DATE '2025-02-20'),
+    ('0000000002', '0000000002-24-000001', '10-Q', 1,    DATE '2024-05-02'),
+    ('0000000002', '0000000002-24-000002', '10-Q', 2,    DATE '2024-08-02'),
+    ('0000000002', '0000000002-25-000001', '10-K', NULL, DATE '2025-02-21'),
+    ('0000000003', '0000000003-24-000001', '10-Q', 1,    DATE '2024-05-03'),
+    ('0000000003', '0000000003-24-000002', '10-Q', 2,    DATE '2024-08-03'),
+    ('0000000003', '0000000003-24-000003', '10-Q', 3,    DATE '2024-11-03')
+) AS s (registrant, native_id, form, quarter, filed_date)
+JOIN fiscal_year y ON y.regulator = 'SEC' AND y.registrant = s.registrant AND y.fiscal_year = 2024
+LEFT JOIN fiscal_quarter q
+    ON q.regulator = y.regulator AND q.registrant = y.registrant
+   AND q.fiscal_year = y.fiscal_year AND q.quarter = s.quarter;
 
 -- Every filing reports every concept, except Beta's 10-K, which omits Revenue.
 INSERT INTO reports_concept (regulator, native_id, element, confidence)

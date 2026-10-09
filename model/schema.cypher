@@ -20,6 +20,15 @@ FOR (p:Period) REQUIRE p.key IS UNIQUE;
 CREATE CONSTRAINT regulator_code IF NOT EXISTS
 FOR (r:Regulator) REQUIRE r.code IS UNIQUE;
 
+CREATE CONSTRAINT registrant_key IF NOT EXISTS
+FOR (g:Registrant) REQUIRE (g.regulator, g.native_id) IS UNIQUE;
+
+CREATE CONSTRAINT fiscal_year_key IF NOT EXISTS
+FOR (y:FiscalYear) REQUIRE (y.regulator, y.registrant, y.fiscal_year) IS UNIQUE;
+
+CREATE CONSTRAINT fiscal_quarter_key IF NOT EXISTS
+FOR (q:FiscalQuarter) REQUIRE (q.regulator, q.registrant, q.fiscal_year, q.quarter) IS UNIQUE;
+
 CREATE CONSTRAINT filing_key IF NOT EXISTS
 FOR (f:Filing) REQUIRE (f.regulator, f.native_id) IS UNIQUE;
 

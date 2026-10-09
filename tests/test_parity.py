@@ -9,8 +9,8 @@ import psycopg
 import pytest
 from neo4j import Session
 
-# Each pair counts the same thing in both stores. FILED_UNDER and OF_FORM are columns of
-# `filing` in SQL, so they count as filings.
+# Each pair counts the same thing in both stores. An edge that is a column or a foreign key in
+# SQL counts as the rows of its table.
 COUNTS: list[tuple[LiteralString, LiteralString]] = [
     ("MATCH (n:Company) RETURN count(n)", "SELECT count(*) FROM company"),
     ("MATCH (n:Identifier) RETURN count(n)", "SELECT count(*) FROM identifier"),
@@ -18,16 +18,32 @@ COUNTS: list[tuple[LiteralString, LiteralString]] = [
     ("MATCH (n:Period) RETURN count(n)", "SELECT count(*) FROM period"),
     ("MATCH (n:Regulator) RETURN count(n)", "SELECT count(*) FROM regulator"),
     ("MATCH (n:FormType) RETURN count(n)", "SELECT count(*) FROM form_type"),
+    ("MATCH (n:Registrant) RETURN count(n)", "SELECT count(*) FROM registrant"),
+    ("MATCH (n:FiscalYear) RETURN count(n)", "SELECT count(*) FROM fiscal_year"),
+    ("MATCH (n:FiscalQuarter) RETURN count(n)", "SELECT count(*) FROM fiscal_quarter"),
     ("MATCH (n:Filing) RETURN count(n)", "SELECT count(*) FROM filing"),
     ("MATCH (n:Exchange) RETURN count(n)", "SELECT count(*) FROM exchange"),
     ("MATCH (n:Industry) RETURN count(n)", "SELECT count(*) FROM industry"),
     ("MATCH ()-[r:HAS_IDENTIFIER]->() RETURN count(r)", "SELECT count(*) FROM has_identifier"),
     ("MATCH ()-[r:REQUIRES]->() RETURN count(r)", "SELECT count(*) FROM requires"),
-    ("MATCH ()-[r:FILES_WITH]->() RETURN count(r)", "SELECT count(*) FROM files_with"),
-    ("MATCH ()-[r:HAS_FILING]->() RETURN count(r)", "SELECT count(*) FROM has_filing"),
-    ("MATCH ()-[r:FILED_UNDER]->() RETURN count(r)", "SELECT count(*) FROM filing"),
+    ("MATCH ()-[r:REGISTERED_AS]->() RETURN count(r)", "SELECT count(*) FROM registrant"),
+    ("MATCH ()-[r:FILES_WITH]->() RETURN count(r)", "SELECT count(*) FROM registrant"),
+    ("MATCH ()-[r:HAS_FISCAL_YEAR]->() RETURN count(r)", "SELECT count(*) FROM fiscal_year"),
+    ("MATCH ()-[r:HAS_QUARTER]->() RETURN count(r)", "SELECT count(*) FROM fiscal_quarter"),
+    (
+        "MATCH ()-[r:ALIGNS_WITH]->() RETURN count(r)",
+        "SELECT count(*) FROM fiscal_quarter WHERE period_key IS NOT NULL",
+    ),
+    ("MATCH ()-[r:HAS_FILING]->() RETURN count(r)", "SELECT count(*) FROM filing"),
     ("MATCH ()-[r:OF_FORM]->() RETURN count(r)", "SELECT count(*) FROM filing"),
-    ("MATCH ()-[r:COVERS_PERIOD]->() RETURN count(r)", "SELECT count(*) FROM covers_period"),
+    (
+        "MATCH ()-[r:REPORTS_ON]->() RETURN count(r)",
+        "SELECT count(*) FROM filing WHERE fiscal_year IS NOT NULL",
+    ),
+    (
+        "MATCH ()-[r:REPORTS_ON]->(:FiscalQuarter) RETURN count(r)",
+        "SELECT count(*) FROM filing WHERE quarter IS NOT NULL",
+    ),
     ("MATCH ()-[r:REPORTS_CONCEPT]->() RETURN count(r)", "SELECT count(*) FROM reports_concept"),
     ("MATCH ()-[r:LISTED_ON]->() RETURN count(r)", "SELECT count(*) FROM listed_on"),
     ("MATCH ()-[r:IN_INDUSTRY]->() RETURN count(r)", "SELECT count(*) FROM in_industry"),

@@ -1,10 +1,11 @@
--- SEC filers with no filing that covers Q3-2024. Anti-join.
-SELECT fw.company_id
-FROM files_with fw
-WHERE fw.regulator = 'SEC'
+-- SEC registrants whose fiscal year 2024 has no filing for its third quarter. Anti-join.
+SELECT g.company_id
+FROM fiscal_quarter q
+JOIN registrant g ON g.regulator = q.regulator AND g.native_id = q.registrant
+WHERE q.regulator = 'SEC' AND q.fiscal_year = 2024 AND q.quarter = 3
   AND NOT EXISTS (
       SELECT 1
-      FROM has_filing hf
-      JOIN covers_period cp USING (regulator, native_id)
-      WHERE hf.company_id = fw.company_id AND cp.period_key = 'Q3-2024'
+      FROM filing f
+      WHERE f.regulator = q.regulator AND f.registrant = q.registrant
+        AND f.fiscal_year = q.fiscal_year AND f.quarter = q.quarter
   )

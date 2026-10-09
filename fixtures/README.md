@@ -26,8 +26,9 @@ Each row is what a query in `queries/` must find.
 
 | What | Found by |
 | --- | --- |
-| Beta has no Q3-2024 10-Q | `missing_q3_2024`, `incomplete_fy2024` |
-| Gamma has no FY2024 10-K | `incomplete_fy2024` |
+| Beta has no 10-Q for the third quarter of fiscal 2024 | `missing_q3_2024`, `incomplete_fy2024` |
+| Gamma has no 10-K for fiscal 2024 | `incomplete_fy2024` |
+| Gamma's third quarter starts on 2024-07-02, one day after the day it must start | `check_fiscal_quarters` |
 | Beta's 10-K omits `Revenue` | `filing_missing_concepts` |
 | Two claims on Beta → Gamma for 2026-01-31: 60 % and 75 % | `conflicting_ownership_claims` |
 | Two claims on Beta → Gamma 75 % with different `as_of`: a time series, not a conflict | `conflicting_ownership_claims` must not report it |
@@ -45,25 +46,36 @@ Each row is what a query in `queries/` must find.
 | Companies | CIKs from arkad `SP500_CIKS`: arkad's 7 must-pass companies, its 3 known gaps (JPMorgan Chase, Exxon Mobil, Amazon), and an even sample of 90 more | 100 |
 | Name, country, first filing date | EDGAR `submissions` | |
 | Identifier | The CIK, as primary identifier. EDGAR gives no LEI, so `company_id` is `CIK:<cik>` | 100 |
+| `Registrant` | One per company, keyed by CIK | 100 |
+| `FiscalYear` | Fiscal year 2024, with the dates of the 10-K that declares it | 99 |
+| `FiscalQuarter` | Four per fiscal year. The first three take their dates from the 10-Q | 396 |
+| Filings | The 10-K and each 10-Q of fiscal 2024, with the real accession number | 399 |
+| `REPORTS_CONCEPT` | EDGAR `companyfacts`: the filing holds a value for its own period end under one of arkad's US GAAP tags for the concept | 1840 |
 | `LISTED_ON` | EDGAR tickers on NYSE, Nasdaq, and Cboe. OTC tickers are left out | 140 |
 | `IN_INDUSTRY` | EDGAR SIC code | 100 |
-| Filings | Each 10-K and 10-Q with a period end in 2024, with its real accession number | 398 |
-| `REPORTS_CONCEPT` | EDGAR `companyfacts`: the filing holds a value for its own period end under one of arkad's US GAAP tags for the concept | 1830 |
 
 Each claim carries `source: SEC-EDGAR`, and `as_of` and `observed_at` of 2025-12-04, the date of
 the EDGAR dump. The first tag in arkad's list gives confidence `Exact`, a later tag gives `Synonym`.
 
-A 10-Q covers the calendar quarter that holds its period end. A 10-K covers `FY2024`.
+### How a fiscal period gets its dates
+
+- Each fact in EDGAR carries the fiscal year and fiscal period that its filing declares (`fy`,
+  `fp`), and the first and last day of its value.
+- The 10-K that declares fiscal year 2024 gives the year. Its facts with a length of about one
+  year give the start date.
+- Each 10-Q that declares `Q1`, `Q2`, or `Q3` of fiscal 2024 gives one quarter. Its facts with a
+  length of about three months give the start date.
+- The fourth quarter runs from the day after the third quarter to the end of the year.
+- If no 10-Q declares a quarter, the quarter fills the space between its neighbors and has no
+  filing.
 
 ### What the real data shows
 
-The filing questions return real companies now. Each row is true for the model as it stands, and
-most rows point at a gap in the model, not in the company.
-
 | Finding | Example | Found by |
 | --- | --- | --- |
-| A fiscal year that ends in Q3 has a 10-K for that quarter, not a 10-Q | Apple, Visa, Cisco, Micron, Tyson Foods | `missing_q3_2024`, `incomplete_fy2024` |
-| A fiscal year that ends in another quarter leaves that calendar quarter without a 10-Q | Microsoft (Q2), NVIDIA (Q1), Target (Q1) | `incomplete_fy2024` |
-| A 52-week year that ends on 2025-01-03 has no period end in 2024, so no 10-K covers `FY2024` | L3Harris, Trimble | `incomplete_fy2024` |
-| Many filers never tag a bare `Liabilities` total | Amazon, 108 filings in total | `filing_missing_concepts` |
-| Some filers tag net income or revenue with a tag outside arkad's list | 37 filings without `NetIncome`, 13 without `Revenue` | `filing_missing_concepts` |
+| With fiscal periods, no real company misses its third quarter. With calendar periods, 7 did | Apple, Visa, Cisco | `missing_q3_2024` |
+| The quarters of all 99 fiscal years follow each other with no gap, by the dates in the filings alone | | `check_fiscal_quarters` |
+| A filing can declare the wrong fiscal period. AES tagged its 10-Q for March 2024 as `Q2` of fiscal 2022. Electronic Arts tagged its 10-Q for June 2023 as fiscal 2023, not 2024 | AES, Electronic Arts | `check_filing_has_period`, `incomplete_fy2024` |
+| The dump holds no facts for one 10-K, so the company has no fiscal year and its three 10-Qs report on nothing | S&P Global | `check_filing_has_period` |
+| "Fiscal 2024" is a label, not a date range. It ends between January 2024 and February 2025 | NVIDIA (2024-01-28), Target (2025-02-01) | |
+| Many filers never tag a bare `Liabilities` total | Amazon | `filing_missing_concepts` |

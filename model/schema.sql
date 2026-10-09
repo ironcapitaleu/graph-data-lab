@@ -34,9 +34,10 @@ CREATE TABLE concept (
     kind    text NOT NULL -- instant | duration
 );
 
+-- A calendar period. Fiscal periods belong to the adapter: see fiscal_year and fiscal_quarter.
 CREATE TABLE period (
     key        text PRIMARY KEY,
-    kind       text NOT NULL, -- quarter | fiscal_year
+    kind       text NOT NULL, -- quarter
     start_date date NOT NULL,
     end_date   date NOT NULL
 );
@@ -61,38 +62,59 @@ CREATE TABLE requires (
     FOREIGN KEY (regulator, form) REFERENCES form_type
 );
 
--- FILED_UNDER is the `regulator` column. The form link is the `form` column.
-CREATE TABLE filing (
-    regulator  text NOT NULL REFERENCES regulator,
-    native_id  text NOT NULL,
-    form       text NOT NULL,
-    filed_date date NOT NULL,
-    period_end date NOT NULL,
-    PRIMARY KEY (regulator, native_id),
-    FOREIGN KEY (regulator, form) REFERENCES form_type
-);
-
-CREATE TABLE has_filing (
-    company_id text NOT NULL REFERENCES company,
-    regulator  text NOT NULL,
-    native_id  text NOT NULL,
-    PRIMARY KEY (company_id, regulator, native_id),
-    FOREIGN KEY (regulator, native_id) REFERENCES filing
-);
-
-CREATE TABLE files_with (
-    company_id  text NOT NULL REFERENCES company,
+-- The company as the regulator knows it. The core company delegates to the adapter here.
+-- REGISTERED_AS is the `company_id` column. FILES_WITH is the `regulator` column with
+-- `first_filed`.
+CREATE TABLE registrant (
     regulator   text NOT NULL REFERENCES regulator,
+    native_id   text NOT NULL, -- SEC: CIK
+    company_id  text NOT NULL REFERENCES company,
+    name        text NOT NULL,
     first_filed date NOT NULL,
-    PRIMARY KEY (company_id, regulator)
+    PRIMARY KEY (regulator, native_id)
 );
 
-CREATE TABLE covers_period (
-    regulator  text NOT NULL,
-    native_id  text NOT NULL,
-    period_key text NOT NULL REFERENCES period,
-    PRIMARY KEY (regulator, native_id, period_key),
-    FOREIGN KEY (regulator, native_id) REFERENCES filing
+-- HAS_FISCAL_YEAR is the foreign key to `registrant`.
+CREATE TABLE fiscal_year (
+    regulator   text    NOT NULL,
+    registrant  text    NOT NULL,
+    fiscal_year integer NOT NULL,
+    start_date  date    NOT NULL,
+    end_date    date    NOT NULL,
+    PRIMARY KEY (regulator, registrant, fiscal_year),
+    FOREIGN KEY (regulator, registrant) REFERENCES registrant
+);
+
+-- HAS_QUARTER is the foreign key to `fiscal_year`. ALIGNS_WITH is the `period_key` column.
+CREATE TABLE fiscal_quarter (
+    regulator   text    NOT NULL,
+    registrant  text    NOT NULL,
+    fiscal_year integer NOT NULL,
+    quarter     integer NOT NULL, -- 1 to 4
+    start_date  date    NOT NULL,
+    end_date    date    NOT NULL,
+    period_key  text REFERENCES period,
+    PRIMARY KEY (regulator, registrant, fiscal_year, quarter),
+    FOREIGN KEY (regulator, registrant, fiscal_year) REFERENCES fiscal_year
+);
+
+-- HAS_FILING is the `registrant` column. The form link is the `form` column.
+-- REPORTS_ON is `fiscal_year` with `quarter`: a 10-K reports on the year and leaves `quarter`
+-- NULL, a 10-Q reports on a quarter. Both are NULL while the period of a filing is unresolved.
+CREATE TABLE filing (
+    regulator   text NOT NULL REFERENCES regulator,
+    native_id   text NOT NULL,
+    registrant  text NOT NULL,
+    form        text NOT NULL,
+    filed_date  date NOT NULL,
+    period_end  date NOT NULL,
+    fiscal_year integer,
+    quarter     integer,
+    PRIMARY KEY (regulator, native_id),
+    FOREIGN KEY (regulator, form) REFERENCES form_type,
+    FOREIGN KEY (regulator, registrant) REFERENCES registrant,
+    FOREIGN KEY (regulator, registrant, fiscal_year) REFERENCES fiscal_year,
+    FOREIGN KEY (regulator, registrant, fiscal_year, quarter) REFERENCES fiscal_quarter
 );
 
 CREATE TABLE reports_concept (

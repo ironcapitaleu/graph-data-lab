@@ -40,8 +40,7 @@ UNWIND [
   {key: 'Q1-2024', kind: 'quarter',     start: '2024-01-01', end: '2024-03-31'},
   {key: 'Q2-2024', kind: 'quarter',     start: '2024-04-01', end: '2024-06-30'},
   {key: 'Q3-2024', kind: 'quarter',     start: '2024-07-01', end: '2024-09-30'},
-  {key: 'Q4-2024', kind: 'quarter',     start: '2024-10-01', end: '2024-12-31'},
-  {key: 'FY2024',  kind: 'fiscal_year', start: '2024-01-01', end: '2024-12-31'}
+  {key: 'Q4-2024', kind: 'quarter',     start: '2024-10-01', end: '2024-12-31'}
 ] AS row
 CREATE (:Period {key: row.key, kind: row.kind, start_date: date(row.start), end_date: date(row.end)});
 
@@ -54,36 +53,62 @@ WITH t
 MATCH (k:Concept)
 CREATE (t)-[:REQUIRES]->(k);
 
+// Registrants: the companies as the SEC knows them. The core company delegates to the adapter here.
 UNWIND [
-  {company: 'LEI:5493001ALPHAHOLD0020', first: '2010-03-01'},
-  {company: 'LEI:5493002BETACORP00097', first: '2012-05-01'},
-  {company: 'CIK:0000000003',           first: '2018-08-01'}
+  {company: 'LEI:5493001ALPHAHOLD0020', cik: '0000000001', name: 'Alpha Holdings Inc', first: '2010-03-01'},
+  {company: 'LEI:5493002BETACORP00097', cik: '0000000002', name: 'Beta Corp',          first: '2012-05-01'},
+  {company: 'CIK:0000000003',           cik: '0000000003', name: 'Gamma Ltd',          first: '2018-08-01'}
 ] AS row
 MATCH (c:Company {company_id: row.company}), (r:Regulator {code: 'SEC'})
-CREATE (c)-[:FILES_WITH {first_filed: date(row.first)}]->(r);
+CREATE (g:Registrant {regulator: 'SEC', native_id: row.cik, name: row.name})
+CREATE (c)-[:REGISTERED_AS]->(g)
+CREATE (g)-[:FILES_WITH {first_filed: date(row.first)}]->(r);
+
+// Fiscal year 2024 of each registrant is the calendar year. `name` is the caption in the
+// Neo4j Browser.
+MATCH (g:Registrant)
+CREATE (g)-[:HAS_FISCAL_YEAR]->(:FiscalYear {regulator: 'SEC', registrant: g.native_id,
+  fiscal_year: 2024, start_date: date('2024-01-01'), end_date: date('2024-12-31'), name: 'FY2024'});
 
 UNWIND [
-  {company: 'LEI:5493001ALPHAHOLD0020', id: '0000000001-24-000001', form: '10-Q', period: 'Q1-2024', filed: '2024-05-01'},
-  {company: 'LEI:5493001ALPHAHOLD0020', id: '0000000001-24-000002', form: '10-Q', period: 'Q2-2024', filed: '2024-08-01'},
-  {company: 'LEI:5493001ALPHAHOLD0020', id: '0000000001-24-000003', form: '10-Q', period: 'Q3-2024', filed: '2024-11-01'},
-  {company: 'LEI:5493001ALPHAHOLD0020', id: '0000000001-25-000001', form: '10-K', period: 'FY2024',  filed: '2025-02-20'},
-  {company: 'LEI:5493002BETACORP00097', id: '0000000002-24-000001', form: '10-Q', period: 'Q1-2024', filed: '2024-05-02'},
-  {company: 'LEI:5493002BETACORP00097', id: '0000000002-24-000002', form: '10-Q', period: 'Q2-2024', filed: '2024-08-02'},
-  {company: 'LEI:5493002BETACORP00097', id: '0000000002-25-000001', form: '10-K', period: 'FY2024',  filed: '2025-02-21'},
-  {company: 'CIK:0000000003',           id: '0000000003-24-000001', form: '10-Q', period: 'Q1-2024', filed: '2024-05-03'},
-  {company: 'CIK:0000000003',           id: '0000000003-24-000002', form: '10-Q', period: 'Q2-2024', filed: '2024-08-03'},
-  {company: 'CIK:0000000003',           id: '0000000003-24-000003', form: '10-Q', period: 'Q3-2024', filed: '2024-11-03'}
+  {quarter: 1, start: '2024-01-01', end: '2024-03-31'},
+  {quarter: 2, start: '2024-04-01', end: '2024-06-30'},
+  {quarter: 3, start: '2024-07-01', end: '2024-09-30'},
+  {quarter: 4, start: '2024-10-01', end: '2024-12-31'}
 ] AS row
-MATCH (c:Company {company_id: row.company}),
-      (r:Regulator {code: 'SEC'}),
-      (t:FormType {regulator: 'SEC', code: row.form}),
-      (p:Period {key: row.period})
+MATCH (y:FiscalYear), (p:Period {key: 'Q' + toString(row.quarter) + '-2024'})
+CREATE (y)-[:HAS_QUARTER]->(q:FiscalQuarter {regulator: 'SEC', registrant: y.registrant,
+  fiscal_year: 2024, quarter: row.quarter, start_date: date(row.start), end_date: date(row.end),
+  name: 'Q' + toString(row.quarter)})
+CREATE (q)-[:ALIGNS_WITH]->(p);
+
+// Gamma's third quarter starts one day late: a planted gap after the second quarter.
+MATCH (q:FiscalQuarter {registrant: '0000000003', fiscal_year: 2024, quarter: 3})
+SET q.start_date = date('2024-07-02');
+
+// Filings. A 10-K reports on the fiscal year, a 10-Q on a quarter.
+// Beta has no 10-Q for the third quarter. Gamma has no 10-K.
+UNWIND [
+  {cik: '0000000001', id: '0000000001-24-000001', form: '10-Q', quarter: 1,    filed: '2024-05-01'},
+  {cik: '0000000001', id: '0000000001-24-000002', form: '10-Q', quarter: 2,    filed: '2024-08-01'},
+  {cik: '0000000001', id: '0000000001-24-000003', form: '10-Q', quarter: 3,    filed: '2024-11-01'},
+  {cik: '0000000001', id: '0000000001-25-000001', form: '10-K', quarter: null, filed: '2025-02-20'},
+  {cik: '0000000002', id: '0000000002-24-000001', form: '10-Q', quarter: 1,    filed: '2024-05-02'},
+  {cik: '0000000002', id: '0000000002-24-000002', form: '10-Q', quarter: 2,    filed: '2024-08-02'},
+  {cik: '0000000002', id: '0000000002-25-000001', form: '10-K', quarter: null, filed: '2025-02-21'},
+  {cik: '0000000003', id: '0000000003-24-000001', form: '10-Q', quarter: 1,    filed: '2024-05-03'},
+  {cik: '0000000003', id: '0000000003-24-000002', form: '10-Q', quarter: 2,    filed: '2024-08-03'},
+  {cik: '0000000003', id: '0000000003-24-000003', form: '10-Q', quarter: 3,    filed: '2024-11-03'}
+] AS row
+MATCH (g:Registrant {regulator: 'SEC', native_id: row.cik})-[:HAS_FISCAL_YEAR]->(y:FiscalYear {fiscal_year: 2024}),
+      (t:FormType {regulator: 'SEC', code: row.form})
+OPTIONAL MATCH (y)-[:HAS_QUARTER]->(q:FiscalQuarter {quarter: row.quarter})
+WITH g, t, row, coalesce(q, y) AS reported
 CREATE (f:Filing {regulator: 'SEC', native_id: row.id, form: row.form,
-                  filed_date: date(row.filed), period_end: p.end_date})
-CREATE (c)-[:HAS_FILING]->(f)
-CREATE (f)-[:FILED_UNDER]->(r)
+                  filed_date: date(row.filed), period_end: reported.end_date})
+CREATE (g)-[:HAS_FILING]->(f)
 CREATE (f)-[:OF_FORM]->(t)
-CREATE (f)-[:COVERS_PERIOD]->(p);
+CREATE (f)-[:REPORTS_ON]->(reported);
 
 // Every filing reports every concept, except Beta's 10-K, which omits Revenue.
 MATCH (f:Filing), (k:Concept)
