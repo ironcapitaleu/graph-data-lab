@@ -29,8 +29,12 @@ model/
   schema.sql        the same model as Postgres tables
 fixtures/
   README.md         the seed companies and the planted gaps and violations
-  seed.cypher       seed data for Neo4j
-  seed.sql          the same seed data for Postgres
+  seed.cypher       hand-written seed for Neo4j: fictional companies with planted violations
+  seed.sql          the same seed for Postgres
+  sp500.cypher      generated seed for Neo4j: 100 real S&P 500 companies from SEC EDGAR
+  sp500.sql         the same seed for Postgres
+scripts/
+  generate_sp500_seed.py  writes the two sp500 files and their expected rows
 queries/<name>/
   query.cypher      the question in Cypher
   query.sql         the question in SQL
@@ -74,6 +78,15 @@ password `graph-data-lab`, then run `MATCH (n) RETURN n`.
 Connection settings come from `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` and `POSTGRES_DSN`. The
 defaults match `docker-compose.yml`.
 
+## Regenerate the S&P 500 seed
+
+The generator needs a clone of arkad and the EDGAR bulk files `submissions` and `companyfacts`.
+The generated files are in the repo, so the tests do not need either one.
+
+```sh
+uv run python scripts/generate_sp500_seed.py --arkad ../arkad --edgar ../data
+```
+
 ## Add a question
 
 1. Create `queries/<name>/`.
@@ -86,4 +99,6 @@ defaults match `docker-compose.yml`.
 - LEI check digits (ISO 17442) and GLEIF status for the identifier check.
 - The `REPORTS_CONCEPT` drift check against the adapter raw store.
 - Period arithmetic: a filing's `period_end` against its period's dates.
-- Performance. The seed has 6 companies, so the timings mean nothing yet.
+- Performance. The seed has 106 companies, so the timings mean nothing yet.
+- Fiscal periods. A `Period` is a calendar period, so a company with another fiscal year looks
+  incomplete. See `fixtures/README.md`.

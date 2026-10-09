@@ -42,6 +42,7 @@ INSERT INTO period (key, kind, start_date, end_date) VALUES
     ('Q1-2024', 'quarter',     '2024-01-01', '2024-03-31'),
     ('Q2-2024', 'quarter',     '2024-04-01', '2024-06-30'),
     ('Q3-2024', 'quarter',     '2024-07-01', '2024-09-30'),
+    ('Q4-2024', 'quarter',     '2024-10-01', '2024-12-31'),
     ('FY2024',  'fiscal_year', '2024-01-01', '2024-12-31');
 
 -- SEC adapter

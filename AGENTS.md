@@ -59,6 +59,8 @@ If a command fails, fix the cause before you push. To apply the automatic fixes,
   arkad.
 - A model change touches every layer in one commit: `MODEL.md`, both schemas, both seeds,
   `fixtures/README.md`, and the affected queries.
+- Never edit `fixtures/sp500.cypher` or `fixtures/sp500.sql` by hand. Change
+  `scripts/generate_sp500_seed.py` and run it again.
 - If you add something that arkad's model does not have, note it at the top of `MODEL.md`.
 - Data-quality rules are queries in `queries/check_*`, not database constraints. The seed holds
   planted violations for them.
@@ -68,7 +70,8 @@ If a command fails, fix the cause before you push. To apply the automatic fixes,
 Load the `lab-testing` skill for any change to `queries/`, `fixtures/`, or `tests/`. The core:
 
 - Each question has a Cypher query, a SQL query, and one shared `expected.json`.
-- Write `expected.json` from the seed by hand, never from a query result.
+- Write `expected.json` from the seed by hand, never from a query result. For the S&P 500 seed,
+  `scripts/generate_sp500_seed.py` derives the rows from the EDGAR files.
 - Every new test failed once on purpose before you trust it.
 - Every test needs both stores, so all tests sit flat in `tests/`. Each test file has a module
   docstring that lists its external dependencies.

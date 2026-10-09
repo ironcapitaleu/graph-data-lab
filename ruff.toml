@@ -30,3 +30,7 @@ convention = "google"
     "D103", # the test name states the property
     "D104",
 ]
+"scripts/**" = [
+    "S608", # the script writes SQL text to a seed file and escapes the quotes
+    "D103", # the name of a script helper states its purpose
+]

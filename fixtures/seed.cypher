@@ -40,6 +40,7 @@ UNWIND [
   {key: 'Q1-2024', kind: 'quarter',     start: '2024-01-01', end: '2024-03-31'},
   {key: 'Q2-2024', kind: 'quarter',     start: '2024-04-01', end: '2024-06-30'},
   {key: 'Q3-2024', kind: 'quarter',     start: '2024-07-01', end: '2024-09-30'},
+  {key: 'Q4-2024', kind: 'quarter',     start: '2024-10-01', end: '2024-12-31'},
   {key: 'FY2024',  kind: 'fiscal_year', start: '2024-01-01', end: '2024-12-31'}
 ] AS row
 CREATE (:Period {key: row.key, kind: row.kind, start_date: date(row.start), end_date: date(row.end)});

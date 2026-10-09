@@ -42,7 +42,11 @@ def neo4j_session() -> Iterator[Session]:
             # The name comes from the database itself, not from user input.
             drop_constraint = cast(LiteralString, f"DROP CONSTRAINT {record['name']}")
             session.run(drop_constraint).consume()
-        for path in (ROOT / "model/schema.cypher", ROOT / "fixtures/seed.cypher"):
+        for path in (
+            ROOT / "model/schema.cypher",
+            ROOT / "fixtures/seed.cypher",
+            ROOT / "fixtures/sp500.cypher",
+        ):
             for statement in cypher_statements(path):
                 session.run(statement).consume()
         yield session
@@ -54,6 +58,10 @@ def postgres_connection() -> Iterator[psycopg.Connection]:
     with psycopg.connect(POSTGRES_DSN, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         connection.execute("CREATE SCHEMA public")
-        for path in (ROOT / "model/schema.sql", ROOT / "fixtures/seed.sql"):
+        for path in (
+            ROOT / "model/schema.sql",
+            ROOT / "fixtures/seed.sql",
+            ROOT / "fixtures/sp500.sql",
+        ):
             connection.execute(read_statement(path))
         yield connection

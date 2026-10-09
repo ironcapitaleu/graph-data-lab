@@ -122,12 +122,12 @@ CREATE TABLE listed_on (
     company_id    text NOT NULL REFERENCES company,
     mic           text NOT NULL REFERENCES exchange,
     ticker        text NOT NULL,
-    listing_date  date NOT NULL,
+    listing_date  date, -- unknown when the source gives none (SEC EDGAR)
     source        text NOT NULL,
     as_of         date NOT NULL,
     observed_at   date NOT NULL,
     verifiability text NOT NULL, -- Verified | Reported | Alleged
-    PRIMARY KEY (company_id, mic, source, as_of)
+    PRIMARY KEY (company_id, mic, ticker, source, as_of)
 );
 
 CREATE TABLE in_industry (

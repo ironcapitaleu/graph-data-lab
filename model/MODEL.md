@@ -9,6 +9,10 @@
 > - `FormType` node and `REQUIRES` edge. They hold the expected-concept set per form, which the
 >   `REPORTS_CONCEPT` completeness check needs.
 > - `HAS_IDENTIFIER.primary` flag. The "exactly one primary id" check needs it.
+> - `LISTED_ON.listing_date` is optional. SEC EDGAR gives the ticker and the exchange of a
+>   listing, but no listing date.
+> - The ticker is part of the `LISTED_ON` key. A company can list several securities on one
+>   exchange, for example Alphabet with `GOOG` and `GOOGL`.
 
 ## 5. Universal Knowledge Graph (Knowledge-Base Layer)
 
@@ -62,7 +66,7 @@ conflict). So every relationship edge carries a uniform **claim envelope** besid
 
 | Edge (claim) | From → To | Payload |
 | --- | --- | --- |
-| `LISTED_ON` | Company → Exchange | ticker, listing_date |
+| `LISTED_ON` | Company → Exchange | ticker, listing_date (optional) |
 | `IN_INDUSTRY` | Company → Industry | scheme |
 | `SUBSIDIARY_OF` | Company → Company | since |
 | `OWNS_STAKE_IN` | Company → Company | percentage |

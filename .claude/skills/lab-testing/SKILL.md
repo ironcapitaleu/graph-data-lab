@@ -18,7 +18,8 @@ Adapted from the arkad `testing` skill. The Rust-specific parts are removed.
 
 ## How the Tests Work
 
-- `tests/conftest.py` wipes both databases, then loads `model/schema.*` and `fixtures/seed.*`.
+- `tests/conftest.py` wipes both databases, then loads `model/schema.*`, `fixtures/seed.*`, and
+  `fixtures/sp500.*`.
 - `tests/test_queries.py` runs each `queries/<name>/query.cypher` on Neo4j and each `query.sql` on
   Postgres. Both results must equal `expected.json`. Row order does not count.
 - `tests/test_parity.py` compares node and edge counts between the two seeds.
@@ -34,7 +35,9 @@ Adapted from the arkad `testing` skill. The Rust-specific parts are removed.
    same `as_of` is a conflict, but a different `as_of` is a time series.
 4. Write `query.cypher` and `query.sql`. Use the same column names. Return dates as text
    (`toString(...)`, `::text`) and avoid floats, so the two drivers return equal values.
-5. Write `expected.json` by hand from the seed. Never copy it from a query result.
+5. Write `expected.json` by hand from the seed. Never copy it from a query result. If the answer
+   includes S&P 500 companies, derive those rows in `scripts/generate_sp500_seed.py` from the
+   EDGAR files, and check three of them by hand.
 6. Run `uv run pytest`. If you changed a file in `tests/`, run all pre-push checks from
    `AGENTS.md`.
 7. Prove that the test can fail: change `expected.json` once, run the tests, see both go red, then
