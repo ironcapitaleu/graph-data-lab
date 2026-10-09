@@ -196,7 +196,11 @@ Company (core)
   its source in one hop. `HAS_FILING` holds every filing, also one whose period is unresolved.
 - **The fourth quarter has no 10-Q.** Its node exists, and its numbers are the year minus the
   first three quarters.
-- **A second regulator adds a second `Registrant`** below the same company, with its own fiscal
-  years. The core does not change.
+- **A second source adds a second `Registrant`** below the same company. The core does not
+  change. The seed shows this with GLEIF: 94 companies have an SEC registrant and a GLEIF
+  registrant. GLEIF is a registry, not a regulator, so the names `Regulator`, `Registrant`, and
+  `FILES_WITH` fit it badly. A rename to `Source` is open.
+- **`Registrant` holds a few optional properties** that only some sources give: `jurisdiction`,
+  `status`, and `next_renewal` come from GLEIF.
 - **`Identifier (CIK)` and `Registrant` overlap on purpose.** The identifier is the identity
   record in the core. The registrant is the root of the adapter data.

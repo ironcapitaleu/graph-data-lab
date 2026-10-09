@@ -44,6 +44,9 @@ UNWIND [
 ] AS row
 CREATE (:Period {key: row.key, kind: row.kind, start_date: date(row.start), end_date: date(row.end)});
 
+// GLEIF is a registry, not a regulator. The node label is the same for both.
+CREATE (:Regulator {code: 'GLEIF', name: 'Global Legal Entity Identifier Foundation'});
+
 // SEC adapter
 CREATE (sec:Regulator {code: 'SEC', name: 'U.S. Securities and Exchange Commission'})
 WITH sec

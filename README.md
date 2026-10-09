@@ -33,7 +33,9 @@ fixtures/
   seed.sql          the same seed for Postgres
   sp500.cypher      generated seed for Neo4j: 100 real S&P 500 companies from SEC EDGAR
   sp500.sql         the same seed for Postgres
+  gleif_records.json  the GLEIF record per company, as fetched from the GLEIF API
 scripts/
+  fetch_gleif.py          matches each S&P 500 company to its GLEIF record
   generate_sp500_seed.py  writes the two sp500 files and their expected rows
 queries/<name>/
   query.cypher      the question in Cypher
@@ -84,7 +86,14 @@ The generator needs a clone of arkad and the EDGAR bulk files `submissions` and 
 The generated files are in the repo, so the tests do not need either one.
 
 ```sh
-uv run python scripts/generate_sp500_seed.py --arkad ../arkad --edgar ../data
+uv run python -m scripts.generate_sp500_seed --arkad ../arkad --edgar ../data
+```
+
+The LEIs come from `fixtures/gleif_records.json`. To fetch them again from the public GLEIF API,
+run this first. It takes about five minutes, because GLEIF allows 60 requests per minute.
+
+```sh
+uv run python -m scripts.fetch_gleif --arkad ../arkad --edgar ../data
 ```
 
 ## Add a question

@@ -46,7 +46,8 @@ Each row is what a query in `queries/` must find.
 | Companies | CIKs from arkad `SP500_CIKS`: arkad's 7 must-pass companies, its 3 known gaps (JPMorgan Chase, Exxon Mobil, Amazon), and an even sample of 90 more | 100 |
 | Name, country, first filing date | EDGAR `submissions` | |
 | Identifier | The CIK, as primary identifier. EDGAR gives no LEI, so `company_id` is `CIK:<cik>` | 100 |
-| `Registrant` | One per company, keyed by CIK | 100 |
+| `Registrant` (SEC) | One per company, keyed by CIK | 100 |
+| `Registrant` (GLEIF) and LEI identifier | One per company that `scripts/fetch_gleif.py` matched, keyed by LEI. See "GLEIF records" below | 94 |
 | `FiscalYear` | Fiscal year 2024, with the dates of the 10-K that declares it | 99 |
 | `FiscalQuarter` | Four per fiscal year. The first three take their dates from the 10-Q | 396 |
 | Filings | The 10-K and each 10-Q of fiscal 2024, with the real accession number | 399 |
@@ -68,6 +69,30 @@ the EDGAR dump. The first tag in arkad's list gives confidence `Exact`, a later 
 - The fourth quarter runs from the day after the third quarter to the end of the year.
 - If no 10-Q declares a quarter, the quarter fills the space between its neighbors and has no
   filing.
+
+### GLEIF records
+
+GLEIF does not know the CIK, so no shared key connects an EDGAR company to its LEI record.
+`scripts/fetch_gleif.py` searches the GLEIF API by name and accepts a record only if all of this
+holds:
+
+- The LEI has valid check digits and the entity is active.
+- The name has the same words as the EDGAR name, in any order and with any legal suffix form.
+- One more fact matches: the jurisdiction of incorporation, or the postal code or city of the
+  headquarters.
+- Exactly one record passes.
+
+`fixtures/gleif_records.json` holds the accepted record per CIK with the facts it matched on, and
+the six companies that got no LEI. Each matched company gets an `Identifier (LEI)` and a second
+`Registrant`, below the `Regulator` node `GLEIF`. `company_id` stays `CIK:<cik>`.
+
+| Finding | Detail |
+| --- | --- |
+| 94 of 100 companies match | 70 on name, jurisdiction, and postal code. 24 on name and one more fact |
+| 6 companies get no LEI | Amazon, PayPal, Applied Materials, O'Reilly, Willis Towers Watson: no record passes. Public Storage: two records pass |
+| 11 of 94 LEIs lapsed | The company did not renew the registration. Host Hotels lapsed in 2014, Meta in September 2026 |
+| The two sources spell 61 of 94 names differently | EDGAR: `SCHWAB CHARLES CORP`. GLEIF: `THE CHARLES SCHWAB CORPORATION` |
+| arkad's key rule would give 94 companies a new `company_id` | The key changes from `CIK:…` to `LEI:…` on the day the LEI arrives |
 
 ### What the real data shows
 

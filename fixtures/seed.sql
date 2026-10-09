@@ -46,7 +46,8 @@ INSERT INTO period (key, kind, start_date, end_date) VALUES
 
 -- SEC adapter
 INSERT INTO regulator (code, name) VALUES
-    ('SEC', 'U.S. Securities and Exchange Commission');
+    ('SEC', 'U.S. Securities and Exchange Commission'),
+    ('GLEIF', 'Global Legal Entity Identifier Foundation');
 
 INSERT INTO form_type (regulator, code) VALUES
     ('SEC', '10-K'),

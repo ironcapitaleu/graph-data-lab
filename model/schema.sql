@@ -71,6 +71,10 @@ CREATE TABLE registrant (
     company_id  text NOT NULL REFERENCES company,
     name        text NOT NULL,
     first_filed date NOT NULL,
+    -- Set only by a source that gives them (GLEIF)
+    jurisdiction text,
+    status       text, -- GLEIF: ISSUED | LAPSED | ...
+    next_renewal date,
     PRIMARY KEY (regulator, native_id)
 );
 
