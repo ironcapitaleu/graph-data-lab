@@ -45,14 +45,16 @@ AGENTS.md           rules for agents working in the lab
 
 ## Run it
 
-You need Docker and Python 3.11 or later.
+You need Docker and [uv](https://docs.astral.sh/uv/). uv installs the Python version from `.python-version` if you lack it.
 
 ```sh
 docker compose up -d --wait
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pytest
+uv run pytest
 ```
+
+`uv run` creates `.venv` and installs the locked dependencies from `uv.lock` on first use. To add
+a dependency, run `uv add <package>` (or `uv add --dev <package>`) and commit `pyproject.toml` and
+`uv.lock`.
 
 The tests wipe both databases, then load the schema and the seed. Do not point them at a database
 you want to keep.

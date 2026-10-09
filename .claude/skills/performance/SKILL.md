@@ -21,7 +21,7 @@ Adapted from the arkad `performance` skill.
 
 | Capability | Status |
 | --- | --- |
-| Correctness on both stores | Available. `pytest` |
+| Correctness on both stores | Available. `uv run pytest` |
 | Generated large seed | None. The seed has 6 companies |
 | Timing harness | None |
 | Query plans | Available by hand: `PROFILE` in Neo4j, `EXPLAIN ANALYZE` in Postgres |

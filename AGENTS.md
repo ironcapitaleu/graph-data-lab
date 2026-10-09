@@ -6,7 +6,7 @@ the model on Neo4j and Postgres side by side. `README.md` explains the layout an
 ## Workflow
 
 - Commit straight to `main`. This repo uses no pull requests.
-- Run `pytest` before every push. All tests must pass.
+- Run `uv run pytest` before every push. All tests must pass.
 - Never change arkad from this repo. A useful result reaches arkad only through a separate arkad PR.
 
 ## Model Rules
