@@ -38,6 +38,9 @@ queries/<name>/
 tests/
   test_queries.py   runs every query on both stores
   test_parity.py    checks that both seeds hold the same data
+AGENTS.md           rules for agents working in the lab
+.claude/skills/     agent skills: lab-testing, performance, plain-english,
+                    xbrl-accounting, handoff
 ```
 
 ## Run it
